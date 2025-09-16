@@ -55,6 +55,9 @@ testpaths = [
     "docs",
 ]
 addopts = "--doctest-modules --doctest-glob=*.rst"
+markers = [
+    "long",
+]
 
 [tool.ruff]
 line-length = 110

@@ -1,12 +1,14 @@
 import jax.numpy as jnp
 import numpy as np
 import optax
+import pytest
 from flax import nnx
 from numpy.testing import assert_allclose
 from uncle_val.datasets import fake_non_variable_lcs
 from uncle_val.models import MLPModel, chi2_lc_train_step
 
 
+@pytest.mark.long
 def test_mlp_model():
     """Fit MLPModel for a constant u function"""
     np_rng = np.random.default_rng(42)

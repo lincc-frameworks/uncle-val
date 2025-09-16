@@ -8,14 +8,21 @@ from uncle_val.datasets import fake_non_variable_lcs
 from uncle_val.models import MLPModel, chi2_lc_train_step
 
 
-@pytest.mark.long
-def test_mlp_model():
-    """Fit MLPModel for a constant u function"""
+def run_mlp_model(train_steps: int, n_obj: int, rtol: float):
+    """Run tests with MLP model
+
+    Parameters
+    ----------
+    train_steps : int
+        Number of training steps, e.g. number of light curves to train on.
+    n_obj : int
+        Number of unique objects to generate.
+    rtol : float
+        Relative error tolerance for testing.
+    """
     np_rng = np.random.default_rng(42)
     nnx_rngs = nnx.Rngs(int(np_rng.integers(1 << 63)))
 
-    train_steps = 2000
-    n_obj = 1000
     n_src = np_rng.integers(30, 150, size=n_obj)
     u = 2.0
 
@@ -61,4 +68,16 @@ def test_mlp_model():
             err=err,
         )
 
-    assert_allclose(np.asarray(model(theta)), u, rtol=0.1)
+    assert_allclose(np.asarray(model(theta)), u, rtol=rtol)
+
+
+@pytest.mark.long
+def test_mlp_model_many_objects():
+    """Fit MLPModel for a constant u function with many objects"""
+    run_mlp_model(train_steps=2000, n_obj=1000, rtol=0.1)
+
+
+def test_mlp_model_overfit_single_object():
+    """Fit MLPModel for a constant u function with a single object"""
+    run_mlp_model(train_steps=1, n_obj=1, rtol=1)
+    run_mlp_model(train_steps=100, n_obj=1, rtol=0.3)

@@ -17,7 +17,9 @@ classifiers = [
 dynamic = ["version"]
 requires-python = ">=3.10"
 dependencies = [
-    "numpy",
+    "nested-pandas>=0.5,<0.6",
+    "numpy>=2",
+    "scipy>=1",
 ]
 
 [project.urls]

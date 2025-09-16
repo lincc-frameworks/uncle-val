@@ -4,7 +4,7 @@ from uncle_val.whitening import whiten_data
 
 
 def test_white_data():
-    """Test white_data() with err drown from a narrow range"""
+    """Test whiten_data() with err drawn from a narrow range"""
     n_obj = 1000
     n_obs = 100
     rng = np.random.default_rng(42)

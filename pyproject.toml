@@ -15,10 +15,13 @@ classifiers = [
     "Programming Language :: Python",
 ]
 dynamic = ["version"]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
+    "flax>=0.11",
+    "jax",
     "nested-pandas>=0.5,<0.6",
     "numpy>=2",
+    "optax>=0.2.6",
     "scipy>=1",
 ]
 
@@ -52,10 +55,13 @@ testpaths = [
     "docs",
 ]
 addopts = "--doctest-modules --doctest-glob=*.rst"
+markers = [
+    "long",
+]
 
 [tool.ruff]
 line-length = 110
-target-version = "py310"
+target-version = "py311"
 [tool.ruff.lint]
 select = [
     # pycodestyle

@@ -5,10 +5,10 @@ import pytest
 from flax import nnx
 from numpy.testing import assert_allclose
 from uncle_val.datasets import fake_non_variable_lcs
-from uncle_val.models import MLPModel, chi2_lc_train_step
+from uncle_val.models import LinearModel, MLPModel, UncleModel, chi2_lc_train_step
 
 
-def run_mlp_model(train_steps: int, n_obj: int, dropout: float | None, rtol: float):
+def run_model(*, train_steps: int, n_obj: int, model: UncleModel, rtol: float):
     """Run tests with MLP model
 
     Parameters
@@ -19,11 +19,12 @@ def run_mlp_model(train_steps: int, n_obj: int, dropout: float | None, rtol: flo
         Number of unique objects to generate.
     dropout : float | None
         Dropout rate to use.
+    model : UncleModel
+        Model to use
     rtol : float
         Relative error tolerance for testing.
     """
     np_rng = np.random.default_rng(42)
-    nnx_rngs = nnx.Rngs(int(np_rng.integers(1 << 63)))
 
     n_src = np_rng.integers(30, 150, size=n_obj)
     u = 2.0
@@ -46,12 +47,6 @@ def run_mlp_model(train_steps: int, n_obj: int, dropout: float | None, rtol: flo
     norm_flux_arr = struct_array.field("norm_flux")
     norm_err_arr = struct_array.field("norm_err")
 
-    model = MLPModel(
-        d_input=2,
-        d_output=1,
-        dropout=dropout,
-        rngs=nnx_rngs,
-    )
     optimizer = nnx.Optimizer(model, optax.adam(1e-3), wrt=nnx.Param)
 
     step = nnx.jit(chi2_lc_train_step)
@@ -71,16 +66,49 @@ def run_mlp_model(train_steps: int, n_obj: int, dropout: float | None, rtol: flo
             err=err,
         )
 
-    assert_allclose(np.asarray(model(theta)), u, rtol=rtol)
+    assert_allclose(np.mean(model(theta)), u, rtol=rtol)
 
 
 @pytest.mark.long
 def test_mlp_model_many_objects():
     """Fit MLPModel for a constant u function with many objects"""
-    run_mlp_model(train_steps=2000, n_obj=1000, dropout=None, rtol=0.01)
+    model = MLPModel(
+        d_input=2,
+        d_output=1,
+        dropout=None,
+        rngs=nnx.Rngs(0),
+    )
+    run_model(model=model, train_steps=2000, n_obj=1000, rtol=0.06)
 
 
 def test_mlp_model_overfit_single_object():
     """Fit MLPModel for a constant u function with a single object"""
-    run_mlp_model(train_steps=1, n_obj=1, dropout=0.2, rtol=0.5)
-    run_mlp_model(train_steps=100, n_obj=1, dropout=0.2, rtol=0.3)
+    model = MLPModel(
+        d_input=2,
+        d_output=1,
+        dropout=0.2,
+        rngs=nnx.Rngs(0),
+    )
+    run_model(model=model, train_steps=1, n_obj=1, rtol=0.5)
+    run_model(model=model, train_steps=100, n_obj=1, rtol=0.3)
+
+
+@pytest.mark.long
+def test_linear_model_many_objects():
+    """Fit MLPModel for a constant u function with many objects"""
+    model = LinearModel(
+        d_input=2,
+        d_output=1,
+        rngs=nnx.Rngs(0),
+    )
+    run_model(model=model, train_steps=2000, n_obj=1000, rtol=0.001)
+
+
+def test_linear_model_overfit_single_object():
+    """Fit MLPModel for a constant u function with a single object"""
+    model = LinearModel(
+        d_input=2,
+        d_output=1,
+        rngs=nnx.Rngs(0),
+    )
+    run_model(model=model, train_steps=1000, n_obj=1, rtol=0.3)

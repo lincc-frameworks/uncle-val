@@ -1,12 +1,11 @@
 from collections.abc import Callable, Sequence
 
-import jax.numpy as jnp
 from flax import nnx
-from jax.scipy import stats
+from jax import numpy as jnp
 
 
 class UncleModel(nnx.Module):
-    """Base class for u-function models
+    """Base class for u-function learning
 
     You must re-implement __init__() to call super and to assign .module.
     The output is either 1-d or 2-d:
@@ -108,42 +107,3 @@ class LinearModel(UncleModel):
         self.module = nnx.Linear(
             self.d_input, self.d_output, rngs=self.rngs, kernel_init=nnx.initializers.normal()
         )
-
-
-def chi2_lc_train_step(model: nnx.Module, optimizer: nnx.Optimizer, theta, flux, err) -> None:
-    """Training step on a single light curve, with chi2 probability based loss.
-
-    This gets a single light curve, gets u=model(theta), computes chi-squared
-    statistics for a constant-flux model using `flux` and `err`, and uses
-    minus logarithm of chi-squared probability as the loss function.
-
-    Parameters
-    ----------
-    model : flax.nnx.Module
-        Model to train, input vector size is d_input.
-    optimizer : flax.optim.Optimizer
-        Optimizer to use for training
-    theta : array-like
-        Input parameter vector for the model, (n_obs, d_input).
-    flux : array-like
-        Flux vector, (n_obs,).
-    err : array-like
-        Error vector, (n_obs,).
-
-    Returns
-    -------
-    None
-    """
-
-    def minus_lnprob_chi2(model):
-        u = model(theta)[:, 0]
-        total_err = u * err
-        avg_flux = jnp.average(flux, weights=total_err**-2)
-        chi2 = jnp.sum(jnp.square((flux - avg_flux) / total_err))
-        lnprob = stats.chi2.logpdf(chi2, jnp.size(flux) - 1)
-        return -lnprob
-
-    loss, grads = nnx.value_and_grad(minus_lnprob_chi2)(model)
-    optimizer.update(model, grads)
-
-    return loss

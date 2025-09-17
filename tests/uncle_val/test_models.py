@@ -5,7 +5,9 @@ import pytest
 from flax import nnx
 from numpy.testing import assert_allclose
 from uncle_val.datasets import fake_non_variable_lcs
-from uncle_val.models import LinearModel, MLPModel, UncleModel, chi2_lc_train_step
+from uncle_val.learning.losses import minus_ln_chi2_prob
+from uncle_val.learning.models import LinearModel, MLPModel, UncleModel
+from uncle_val.learning.training import train_step
 
 
 def run_model(*, train_steps: int, n_obj: int, model: UncleModel, rtol: float):
@@ -49,7 +51,7 @@ def run_model(*, train_steps: int, n_obj: int, model: UncleModel, rtol: float):
 
     optimizer = nnx.Optimizer(model, optax.adam(1e-3), wrt=nnx.Param)
 
-    step = nnx.jit(chi2_lc_train_step)
+    step = nnx.jit(lambda **kwargs: train_step(loss=minus_ln_chi2_prob, **kwargs))
 
     for idx in np_rng.choice(len(flux_arr), train_steps):
         flux = jnp.asarray(flux_arr[idx].values)

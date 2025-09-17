@@ -24,13 +24,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: Cache JAX compilation cache
-      uses: actions/cache@v4
-      with:
-        path: /tmp/jax_cache
-        key: jax-cache-${{ runner.os }}
-        restore-keys: |
-          jax-cache-
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:

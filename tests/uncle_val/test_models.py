@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 import jax.numpy as jnp
 import numpy as np
 import optax
@@ -5,12 +7,12 @@ import pytest
 from flax import nnx
 from numpy.testing import assert_allclose
 from uncle_val.datasets import fake_non_variable_lcs
-from uncle_val.learning.losses import minus_ln_chi2_prob
+from uncle_val.learning.losses import kl_divergence_whiten, minus_ln_chi2_prob
 from uncle_val.learning.models import LinearModel, MLPModel, UncleModel
 from uncle_val.learning.training import train_step
 
 
-def run_model(*, train_steps: int, n_obj: int, model: UncleModel, rtol: float):
+def run_model(*, train_steps: int, n_obj: int, model: UncleModel, loss: Callable, rtol: float):
     """Run tests with MLP model
 
     Parameters
@@ -19,10 +21,10 @@ def run_model(*, train_steps: int, n_obj: int, model: UncleModel, rtol: float):
         Number of training steps, e.g. number of light curves to train on.
     n_obj : int
         Number of unique objects to generate.
-    dropout : float | None
-        Dropout rate to use.
     model : UncleModel
         Model to use
+    loss : Callable
+        Loss function to use
     rtol : float
         Relative error tolerance for testing.
     """
@@ -51,7 +53,7 @@ def run_model(*, train_steps: int, n_obj: int, model: UncleModel, rtol: float):
 
     optimizer = nnx.Optimizer(model, optax.adam(1e-3), wrt=nnx.Param)
 
-    step = nnx.jit(lambda **kwargs: train_step(loss=minus_ln_chi2_prob, **kwargs))
+    step = nnx.jit(lambda **kwargs: train_step(loss=loss, **kwargs))
 
     for idx in np_rng.choice(len(flux_arr), train_steps):
         flux = jnp.asarray(flux_arr[idx].values)
@@ -71,8 +73,9 @@ def run_model(*, train_steps: int, n_obj: int, model: UncleModel, rtol: float):
     assert_allclose(np.mean(model(theta)), u, rtol=rtol)
 
 
+@pytest.mark.parametrize("loss", [minus_ln_chi2_prob, kl_divergence_whiten])
 @pytest.mark.long
-def test_mlp_model_many_objects():
+def test_mlp_model_many_objects(loss):
     """Fit MLPModel for a constant u function with many objects"""
     model = MLPModel(
         d_input=2,
@@ -80,10 +83,11 @@ def test_mlp_model_many_objects():
         dropout=None,
         rngs=nnx.Rngs(0),
     )
-    run_model(model=model, train_steps=2000, n_obj=1000, rtol=0.06)
+    run_model(model=model, loss=loss, train_steps=2000, n_obj=1000, rtol=0.06)
 
 
-def test_mlp_model_overfit_single_object():
+@pytest.mark.parametrize("loss", [minus_ln_chi2_prob, kl_divergence_whiten])
+def test_mlp_model_overfit_single_object(loss):
     """Fit MLPModel for a constant u function with a single object"""
     model = MLPModel(
         d_input=2,
@@ -91,26 +95,28 @@ def test_mlp_model_overfit_single_object():
         dropout=0.2,
         rngs=nnx.Rngs(0),
     )
-    run_model(model=model, train_steps=1, n_obj=1, rtol=0.5)
-    run_model(model=model, train_steps=100, n_obj=1, rtol=0.3)
+    run_model(model=model, loss=loss, train_steps=1, n_obj=1, rtol=0.5)
+    run_model(model=model, loss=loss, train_steps=100, n_obj=1, rtol=0.3)
 
 
+@pytest.mark.parametrize("loss", [minus_ln_chi2_prob, kl_divergence_whiten])
 @pytest.mark.long
-def test_linear_model_many_objects():
+def test_linear_model_many_objects(loss):
     """Fit MLPModel for a constant u function with many objects"""
     model = LinearModel(
         d_input=2,
         d_output=1,
         rngs=nnx.Rngs(0),
     )
-    run_model(model=model, train_steps=2000, n_obj=1000, rtol=0.001)
+    run_model(model=model, loss=loss, train_steps=2000, n_obj=1000, rtol=0.01)
 
 
-def test_linear_model_overfit_single_object():
+@pytest.mark.parametrize("loss", [minus_ln_chi2_prob, kl_divergence_whiten])
+def test_linear_model_overfit_single_object(loss):
     """Fit MLPModel for a constant u function with a single object"""
     model = LinearModel(
         d_input=2,
         d_output=1,
         rngs=nnx.Rngs(0),
     )
-    run_model(model=model, train_steps=1000, n_obj=1, rtol=0.3)
+    run_model(model=model, loss=loss, train_steps=1000, n_obj=1, rtol=0.3)

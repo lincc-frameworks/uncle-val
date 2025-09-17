@@ -47,6 +47,13 @@ class UncleModel(nnx.Module):
         s = jnp.expm1(output[..., 1])
         return jnp.stack([u, s], axis=-1)
 
+    def corrections(self, x):
+        """Outputs a tuple of u and s correction factors"""
+        model_output = self(x)
+        u = model_output[..., 0]
+        s = model_output[..., 1] if self.outputs_s else 0.0
+        return u, s
+
 
 class MLPModel(UncleModel):
     """Multi-layer Perceptron (MLP) model for the Uncle function

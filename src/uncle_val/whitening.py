@@ -44,12 +44,14 @@ def whiten_data(x, v, *, np=numpy):
     where the mean mu is unknown, but constant value,
     variance is known v, and all x[i] are independent.
     """
-    mu = np.average(x, weights=1 / v)
+    mean_v = np.mean(v)
+    v = v / mean_v
 
     decomposed = stable_decomposition(v, np=np)
     transform = np.linalg.inv(decomposed)
 
-    residual = x - mu
+    mu = np.average(x, weights=1 / v)
+    residual = (x - mu) / np.sqrt(mean_v)
     z = transform @ residual
 
     return z

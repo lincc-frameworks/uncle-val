@@ -8,7 +8,7 @@ from uncle_val.datasets import fake_non_variable_lcs
 from uncle_val.models import MLPModel, chi2_lc_train_step
 
 
-def run_mlp_model(train_steps: int, n_obj: int, rtol: float):
+def run_mlp_model(train_steps: int, n_obj: int, dropout: float | None, rtol: float):
     """Run tests with MLP model
 
     Parameters
@@ -17,6 +17,8 @@ def run_mlp_model(train_steps: int, n_obj: int, rtol: float):
         Number of training steps, e.g. number of light curves to train on.
     n_obj : int
         Number of unique objects to generate.
+    dropout : float | None
+        Dropout rate to use.
     rtol : float
         Relative error tolerance for testing.
     """
@@ -47,6 +49,7 @@ def run_mlp_model(train_steps: int, n_obj: int, rtol: float):
     model = MLPModel(
         d_input=2,
         d_output=1,
+        dropout=dropout,
         rngs=nnx_rngs,
     )
     optimizer = nnx.Optimizer(model, optax.adam(1e-3), wrt=nnx.Param)
@@ -74,10 +77,10 @@ def run_mlp_model(train_steps: int, n_obj: int, rtol: float):
 @pytest.mark.long
 def test_mlp_model_many_objects():
     """Fit MLPModel for a constant u function with many objects"""
-    run_mlp_model(train_steps=2000, n_obj=1000, rtol=0.1)
+    run_mlp_model(train_steps=2000, n_obj=1000, dropout=None, rtol=0.01)
 
 
 def test_mlp_model_overfit_single_object():
     """Fit MLPModel for a constant u function with a single object"""
-    run_mlp_model(train_steps=1, n_obj=1, rtol=1)
-    run_mlp_model(train_steps=100, n_obj=1, rtol=0.3)
+    run_mlp_model(train_steps=1, n_obj=1, dropout=0.2, rtol=0.5)
+    run_mlp_model(train_steps=100, n_obj=1, dropout=0.2, rtol=0.3)

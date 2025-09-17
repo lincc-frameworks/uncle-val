@@ -16,12 +16,20 @@ class MLPModel(nnx.Module):
         Size of hidden layers, e.g. [64, 32, 16]
     d_output : int
         Number of output parameters, 1 for u, 2 for [u, l].
+    dropout : float | None
+        Dropout probability, do not use dropout layer if None.
     rngs : flax.nnx.Rangs
         Random number generator for parameter initialization.
     """
 
     def __init__(
-        self, d_input: int, *, d_middle: Sequence[int] = (300, 300, 400), d_output: int = 1, rngs: nnx.Rngs
+        self,
+        d_input: int,
+        *,
+        d_middle: Sequence[int] = (300, 300, 400),
+        d_output: int = 1,
+        dropout: None | float = None,
+        rngs: nnx.Rngs,
     ):
         layers = []
         dims = [d_input] + list(d_middle) + [d_output]
@@ -29,7 +37,8 @@ class MLPModel(nnx.Module):
             layers.append(nnx.Linear(d1, d2, rngs=rngs, kernel_init=nnx.initializers.normal()))
             if i < len(dims) - 2:  # not the last layer
                 layers.append(nnx.relu)
-                layers.append(nnx.Dropout(0.2, rngs=rngs))
+                if dropout is not None:
+                    layers.append(nnx.Dropout(dropout, rngs=rngs))
         self.layers = nnx.Sequential(*layers)
 
     def __call__(self, x):

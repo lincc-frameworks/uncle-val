@@ -26,11 +26,11 @@ def train_step(
     loss : callable, func(model, theta, flux, err) -> loss_value
         Loss function
     theta : array-like
-        Input parameter vector for the model, (n_obs, d_input).
+        Input parameter vector for the model, (n_batch, n_obs, d_input).
     flux : array-like
-        Flux vector, (n_obs,).
+        Flux vector, (n_batch, n_obs,).
     err : array-like
-        Error vector, (n_obs,).
+        Error vector, (n_batch, n_obs,).
 
     Returns
     -------

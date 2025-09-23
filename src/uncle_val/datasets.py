@@ -27,13 +27,13 @@ def fake_non_variable_lcs(
     n_src : int or numpy.ndarray of int
         Number of observations per light curve to generate, either a single
         value or an array of values of `(n_obj,)` shape.
-    err : None | func(flux, rng) -> numpy.ndarray of float
+    err : None | udf(flux, rng) -> numpy.ndarray of float
         "Reported" uncertainties, e.g. underestimated ones. If None,
         `scipy.stats.uniform(low=0.5, high=2.0)` will be used.
         Otherwise, the user-provided function will be called with
         flux array and numpy random generator object. Default is
         `flux * scipy.stats.loguniform.rvs(low=0.01, high=0.1, size=len(flux), random_state=rng)`.
-    u : float or func(flux, err, rng) -> numpy.ndarray of float
+    u : float or udf(flux, err, rng) -> numpy.ndarray of float
         Uncertainty underestimation value, e.g. true_err / reported_err.
         Either a constant or a user-provided function of true flux,
         reported error and numpy random generator object.

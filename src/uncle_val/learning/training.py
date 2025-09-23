@@ -23,18 +23,19 @@ def train_step(
         Model to train, input vector size is d_input.
     optimizer : flax.optim.Optimizer
         Optimizer to use for training
-    loss : callable, func(model, theta, flux, err) -> loss_value
+    loss : callable, udf(model, theta, flux, err) -> loss_value
         Loss function
     theta : array-like
-        Input parameter vector for the model, (n_batch, n_obs, d_input).
+        Input parameter vector for the model, (n_batch, n_src, d_input).
     flux : array-like
-        Flux vector, (n_batch, n_obs,).
+        Flux vector, (n_batch, n_src,).
     err : array-like
-        Error vector, (n_batch, n_obs,).
+        Error vector, (n_batch, n_src,).
 
     Returns
     -------
-    None
+    jnp.ndarray
+        Loss value
     """
 
     vals, grads = nnx.value_and_grad(lambda model_: loss(model_, theta, flux, err))(model)

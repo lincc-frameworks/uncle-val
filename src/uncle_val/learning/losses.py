@@ -17,16 +17,16 @@ def _residuals_lc(model: UncleModel, theta: jnp.ndarray, flux: jnp.ndarray, err:
     model : UncleModel
         Model to compute loss for, input dimensions is d_input
     theta : jnp.ndarray
-        Parameter vector, (n_obs, d_input)
+        Parameter vector, (n_src, d_input)
     flux : jnp.ndarray
-        Flux vector, (n_obs,)
+        Flux vector, (n_src,)
     err : jnp.ndarray
-        Error vector, (n_obs,)
+        Error vector, (n_src,)
 
     Returns
     -------
     jnp.ndarray
-        Residual vector, (n_obs,)
+        Residual vector, (n_src,)
     """
     u, s = model.corrections(theta)
     corrected_flux = flux * (1.0 + s)
@@ -45,11 +45,11 @@ def _chi2_lc(model: UncleModel, theta: jnp.ndarray, flux: jnp.ndarray, err: jnp.
     model : UncleModel
         Model to compute loss for, input dimensions is d_input
     theta : jnp.ndarray
-        Parameter vector, (n_obs, d_input)
+        Parameter vector, (n_src, d_input)
     flux : jnp.ndarray
-        Flux vector, (n_obs,)
+        Flux vector, (n_src,)
     err : jnp.ndarray
-        Error vector, (n_obs,)
+        Error vector, (n_src,)
 
     Returns
     -------
@@ -71,11 +71,11 @@ def minus_ln_chi2_prob(
     model : UncleModel
         Model to compute loss for, input dimensions is d_input
     theta : jnp.ndarray
-        Parameter vector, (n_batch, n_obs, d_input)
+        Parameter vector, (n_batch, n_src, d_input)
     flux : jnp.ndarray
-        Flux vector, (n_batch, n_obs,)
+        Flux vector, (n_batch, n_src,)
     err : jnp.ndarray
-        Error vector, (n_batch, n_obs,)
+        Error vector, (n_batch, n_src,)
 
     Returns
     -------
@@ -105,15 +105,15 @@ def _whiten_light_curve(
     model : UncleModel
         Model to compute loss for, input dimensions is d_input
     theta : jnp.ndarray
-        Parameter vector, (n_obs, d_input)
+        Parameter vector, (n_src, d_input)
     flux : jnp.ndarray
-        Flux vector, (n_obs,)
+        Flux vector, (n_src,)
     err : jnp.ndarray
-        Error vector, (n_obs,)
+        Error vector, (n_src,)
 
     Returns
     -------
-    jnp.ndarray, (n_obs,)
+    jnp.ndarray, (n_src,)
         Whitened light curve vector
     """
     u, s = model.corrections(theta)
@@ -135,11 +135,11 @@ def kl_divergence_whiten(
     model : UncleModel
         Model to compute loss for, input dimensions is d_input
     theta : jnp.ndarray
-        Parameter vector, (n_batch, n_obs, d_input)
+        Parameter vector, (n_batch, n_src, d_input)
     flux : jnp.ndarray
-        Flux vector, (n_batch, n_obs,)
+        Flux vector, (n_batch, n_src,)
     err : jnp.ndarray
-        Error vector, (n_batch, n_obs,)
+        Error vector, (n_batch, n_src,)
 
     Returns
     -------

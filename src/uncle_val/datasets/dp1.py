@@ -53,7 +53,7 @@ def dp1_catalog_single_band(
     band : str
         Band to use, one of ugrizy
     obj : str
-        Type of object catalog, "science" or "dia".
+        Type of object nested_series, "science" or "dia".
     img : str
         Type of image used for photometry, "cal" (calibrated) or
         "diff" (subtracted).

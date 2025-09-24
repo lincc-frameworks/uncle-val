@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 from dask.distributed import Client
 from nested_pandas import NestedFrame
-from uncle_val.datasets import fake_non_variable_lcs
+from uncle_val.datasets.fake import fake_non_variable_lcs
 from uncle_val.learning.lsdb_data_generator import LSDBDataGenerator
 
 
@@ -37,7 +37,7 @@ def test_lsdb_data_generator(client):
         catalog=catalog,
         client=client,
         n_src=output_n_src,
-        partition_chunk_size=None,
+        partitions_per_chunk=None,
         seed=rng.integers(1 << 63),
     )
 

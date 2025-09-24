@@ -94,7 +94,7 @@ class LSDBDataGenerator(Iterator[dict[str, jnp.ndarray]]):
         `client.compute()`.
     n_src : int
         Number of observations per light curve.
-    partition_chunk_size : int or None
+    partitions_per_chunk : int or None
         Number of partitions to yield, default is None, which makes it equal
         to number of Dask workers being run with Dask client.
     seed : int
@@ -114,14 +114,14 @@ class LSDBDataGenerator(Iterator[dict[str, jnp.ndarray]]):
         catalog: Catalog,
         client: Client | None,
         n_src: int,
-        partition_chunk_size: int | None = None,
+        partitions_per_chunk: int | None = None,
         seed: int,
     ) -> None:
         self.catalog = catalog
         self.client = client
         self.n_src = n_src
         self.seed = seed
-        self._partition_chunk_size = partition_chunk_size
+        self.partitions_per_chunk = self._get_partitions_per_chunk(partitions_per_chunk, client)
         self.rng = np.random.default_rng((1 << 32, seed))
 
         self.partitions_left = self._shuffle_partitions(catalog, self.rng)
@@ -150,7 +150,8 @@ class LSDBDataGenerator(Iterator[dict[str, jnp.ndarray]]):
         nested_column = nested_columns[0]
         return nested_column
 
-    def _get_partition_chunk(self) -> int:
+    @staticmethod
+    def _get_partitions_per_chunk(input_chunk_size, client) -> int:
         """Number of chunk to yield, either given or number of Dask workers
 
         Returns one if no chunk size is given and workers are available yet
@@ -161,19 +162,18 @@ class LSDBDataGenerator(Iterator[dict[str, jnp.ndarray]]):
         int
             Number of partitions to yield.
         """
-        if self._partition_chunk_size is not None:
-            return self._partition_chunk_size
-        if self.client is None:
+        if input_chunk_size is not None:
+            return input_chunk_size
+        if client is None:
             return 1
-        n_workers = len(self.client.scheduler_info().get("workers", []))
+        n_workers = len(client.scheduler_info().get("workers", []))
         n_workers = n_workers if n_workers > 0 else 1
         return n_workers
 
     def _submit_next_partitions(self) -> Future | _FakeFuture:
-        chunk_size = self._get_partition_chunk()
         self.partitions_left, partitions = (
-            self.partitions_left[:-chunk_size],
-            self.partitions_left[-chunk_size:],
+            self.partitions_left[: -self.partitions_per_chunk],
+            self.partitions_left[-self.partitions_per_chunk :],
         )
         sliced_catalog = self.catalog.partitions[partitions]
 
@@ -212,3 +212,6 @@ class LSDBDataGenerator(Iterator[dict[str, jnp.ndarray]]):
             self.future = None
 
         return result
+
+    def __len__(self) -> int:
+        return int(np.ceil(len(self.partitions_left) / self.partitions_per_chunk))

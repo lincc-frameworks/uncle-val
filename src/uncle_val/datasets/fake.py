@@ -2,8 +2,8 @@ from collections.abc import Callable
 
 import numpy as np
 from nested_pandas import NestedFrame
+from numpy._typing import NDArray
 from numpy.random import Generator
-from numpy.typing import NDArray
 from scipy import stats
 
 

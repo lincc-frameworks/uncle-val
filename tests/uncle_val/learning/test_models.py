@@ -6,7 +6,7 @@ import optax
 import pytest
 from flax import nnx
 from numpy.testing import assert_allclose
-from uncle_val.datasets import fake_non_variable_lcs
+from uncle_val.datasets.fake import fake_non_variable_lcs
 from uncle_val.learning.losses import kl_divergence_whiten, minus_ln_chi2_prob
 from uncle_val.learning.models import LinearModel, MLPModel, UncleModel
 from uncle_val.learning.training import train_step

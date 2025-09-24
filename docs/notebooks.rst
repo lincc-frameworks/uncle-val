@@ -3,4 +3,5 @@ Notebooks
 
 .. toctree::
 
-    Introducing Jupyter Notebooks <notebooks/intro_notebook>
+    ML Demo <pre_executed/demo>
+    Whitening demo <pre_executed/dp1-object-forced-source>

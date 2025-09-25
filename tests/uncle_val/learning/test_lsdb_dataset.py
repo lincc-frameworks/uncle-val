@@ -3,9 +3,9 @@ import numpy as np
 import pandas as pd
 import pytest
 from dask.distributed import Client
-from nested_pandas import NestedFrame
+from numpy.testing import assert_array_equal
 from uncle_val.datasets.fake import fake_non_variable_lcs
-from uncle_val.learning.lsdb_data_generator import LSDBDataGenerator
+from uncle_val.learning.lsdb_dataset import LSDBDataGenerator
 
 
 @pytest.mark.parametrize("client", ("dask", None))
@@ -44,8 +44,6 @@ def test_lsdb_data_generator(client):
     chunks = list(gen)
     assert len(chunks) > 1, "Expected more than 1 chunk"
 
-    output_flat_nf_chunks = [
-        NestedFrame({col: np.asarray(value).flatten() for col, value in chunk.items()}) for chunk in chunks
-    ]
-    output_flat_nf = pd.concat(output_flat_nf_chunks)
-    assert len(output_flat_nf) == output_n_obj * output_n_src
+    output_flat_nf = pd.concat(chunks)
+    assert len(output_flat_nf) == output_n_obj
+    assert_array_equal(output_flat_nf.nest.list_lengths, output_n_src)

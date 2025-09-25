@@ -1,4 +1,4 @@
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
 from typing import Self
 
 import dask
@@ -6,8 +6,12 @@ import numpy as np
 import pandas as pd
 from dask.distributed import Client, Future
 from hats import HealpixPixel
+from hyrax.config_utils import ConfigDict
+from hyrax.data_sets import HyraxDataset
 from lsdb import Catalog
 from nested_pandas import NestedFrame
+
+from uncle_val.datasets import dp1_catalog_single_band
 
 
 class _FakeFuture:
@@ -138,6 +142,71 @@ class LSDBDataGenerator(Iterator[pd.Series]):
 
         self.future = self._submit_next_partitions()
 
+    @classmethod
+    def from_hyrax_config(cls, config: ConfigDict) -> Self:
+        """Construct from a hyrax config
+
+        These sections must be defined:
+        [data_set.LSDBDataGenerator]
+        n_src : int
+        partitions_per_chunk : int or "none"
+        seed : int
+
+        [data_set.LSDBDataGenerator.nested_series.dp1]
+        <Arguments to pass to dp1_catalog_single_band>
+
+        [data_set.LSDBDataGenerator.dask.LocalCluster]
+        <Arguments to pass to dask.distributed.Client>
+        <If not defined, or "none" or `false`, client=None is used>
+
+        Parameters
+        ----------
+        config : ConfigDict
+            Hyrax config object.
+
+        Returns
+        -------
+        LSDBDataGenerator
+            Generator yielding training data from an LSDB nested_series
+        """
+        sub_config = config["data_set"]["LSDBDataGenerator"]
+
+        dp1_catalog = dp1_catalog_single_band(**sub_config["catalog"]["dp1"])
+
+        dask_client_config = sub_config["dask"].get("LocalCluster", "none")
+        if dask_client_config == "none" or not dask_client_config:
+            client = None
+        else:
+            client = dask.distributed.Client(**dask_client_config)
+
+        n_src = sub_config["n_src"]
+        if not isinstance(n_src, int):
+            raise ValueError(
+                f"Expected integer for `config['data_set']['LSDBDataGenerator']['n_src']`, but got {n_src}"
+            )
+
+        partitions_per_chunk = config["data_set"][""].get("partitions_per_chunk", "none")
+        if partitions_per_chunk == "none":
+            partitions_per_chunk = None
+        if partitions_per_chunk is not None or isinstance(partitions_per_chunk, int):
+            raise ValueError(
+                f"Expected integer or 'none' for config['data_set']['LSDBDataGenerator']['partitions_per_chunk'], but got {partitions_per_chunk}"
+            )
+
+        seed = sub_config["seed"]
+        if not isinstance(seed, int):
+            raise ValueError(
+                f"Expected integer for `config['data_set']['LSDBDataGenerator']['seed']`, but got {seed}"
+            )
+
+        return cls(
+            catalog=dp1_catalog,
+            client=client,
+            n_src=n_src,
+            partitions_per_chunk=partitions_per_chunk,
+            seed=seed,
+        )
+
     @staticmethod
     def _shuffle_partitions(catalog: Catalog, rng: np.random.Generator) -> list[int]:
         return rng.permutation(catalog.npartitions).tolist()
@@ -208,3 +277,19 @@ class LSDBDataGenerator(Iterator[pd.Series]):
 
     def __len__(self) -> int:
         return int(np.ceil(len(self.partitions_left) / self.partitions_per_chunk))
+
+
+class LSDBIterableDataset(HyraxDataset):
+    def __init__(self, config: ConfigDict, metadata_table=None):
+        if metadata_table is not None:
+            raise NotImplementedError("metadata_table=None is not supported")
+        super().__init__(config, metadata_table=metadata_table)
+        self.lsdb_data_generator = LSDBDataGenerator.from_hyrax_config(config)
+
+    def __iter__(self) -> Generator[dict, None, None]:
+        for chunk in self.lsdb_data_generator:
+            flat_df = chunk.nest.to_flat()
+            for record in flat_df.itertuples(index=False):
+                yield {
+                    "data": record._asdict(),
+                }

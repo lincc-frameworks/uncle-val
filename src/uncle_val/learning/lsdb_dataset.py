@@ -34,7 +34,7 @@ def _process_lc(
         if col.startswith(f"{lc_col}."):
             result[col] = value[idx]
         else:
-            result[f"{lc_col}.{col}"] = np.full(lc_length, value)
+            result[f"{lc_col}.{col}"] = np.full(n_src, value)
     return result
 
 

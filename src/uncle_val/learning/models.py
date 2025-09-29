@@ -111,11 +111,14 @@
 #         self.module = nnx.Linear(
 #             self.d_input, self.d_output, rngs=self.rngs, kernel_init=nnx.initializers.normal()
 #         )
+import numpy as np
 import torch
 from hyrax.models import hyrax_model
 from torch import Tensor
 
 from uncle_val.consts import MAG_AB_ZP_NJY
+from uncle_val.utils import import_by_name
+from uncle_val.utils.config_validation import validate_hyrax_batch_size
 
 
 @hyrax_model
@@ -124,7 +127,7 @@ class LinearModel(torch.nn.Module):
     flux_scaler_scale = 10**(-0.4 * (flux_scaler_scale_mag - MAG_AB_ZP_NJY))
     flux_scaler_norm_mag = 14
     flux_scaler_norm_flux = 10**(-0.4 * (flux_scaler_norm_mag - MAG_AB_ZP_NJY))
-    flux_scaler_norm = torch.arcsinh(flux_scaler_norm_flux / flux_scaler_scale)
+    flux_scaler_norm = np.arcsinh(flux_scaler_norm_flux / flux_scaler_scale).item()
 
     err_scaler_lg_lower = 0.0
     err_scaler_lg_upper = 5.0
@@ -133,6 +136,18 @@ class LinearModel(torch.nn.Module):
     def __init__(self, config, shape) -> None:
         super().__init__()
         self.layers = torch.nn.Linear(shape, 1)
+        self.loss = import_by_name(config["model"]["loss_fn"])
+        self.n_src = config["data_set"]["LSDBDataGenerator"]["n_src"]
+        if not isinstance(self.n_src, int):
+            raise ValueError(f"expected integer value for `config['data_set']['LSDBDataGenerator']['n_src']`, got {self.n_src}")
+
+        hyrax_batch_size = config["data_loader"]["batch_size"]
+        if not isinstance(hyrax_batch_size, int):
+            raise ValueError(f"expected integer value for `config['data_loader']['batch_size']`, got {self.batch_size}")
+        validate_hyrax_batch_size(config)
+
+        self.obj_batch_size = hyrax_batch_size // self.n_src
+
 
     def scale_flux(self, flux: Tensor) -> Tensor:
         return torch.arcsinh(flux / self.flux_scaler_scale) / self.flux_scaler_norm
@@ -153,6 +168,24 @@ class LinearModel(torch.nn.Module):
 
     @staticmethod
     def to_tensor(data_dict: dict) -> tuple[Tensor, Tensor]:
-        x = torch.tensor([data_dict.values()])
+        x = torch.tensor(list(data_dict.values()))
         y = torch.tensor([data_dict["flux"], data_dict["err"]])
         return x, y
+
+    def train_step(self, batch: tuple[Tensor, Tensor]) -> dict[str, float]:
+        x, y = batch[0].reshape(self.obj_batch_size, self.n_src), batch[1].reshape(self.obj_batch_size, self.n_src)
+        flux, err = y[..., 0], y[..., 1]
+
+        self.optimizer.zero_grad()
+
+        result = self.forward(x)
+        u = result[..., 0]
+        s = 1.0
+        corrected_flux = flux * (1.0 + s)
+        corrected_err = err * u
+
+        loss = self.loss_fn(corrected_flux, corrected_err)
+        loss.backward()
+        self.optimizer.step()
+
+        return {"loss": loss.item()}

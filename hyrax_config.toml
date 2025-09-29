@@ -1,0 +1,52 @@
+[general]
+dev_mode = true
+log_level = "debug"
+data_dir = "./data/hyrax/data"
+results_dir = "./data/hyrax/results"
+
+[train]
+weights_filename = "./data/hyrax/weights/model.pth"
+epochs = 10
+split = "train"
+experiment_name = "test"
+run_name = false
+
+[onnx]
+# The operator set version to use when exporting a model. See the following for info:
+# https://onnxruntime.ai/docs/reference/compatibility.html#onnx-opset-support
+opset_version = 20
+
+[model]
+name = "uncle_val.learning.models.LinearModel"
+loss_fn = "uncle_val.learning.losses.minus_ln_chi2_prob"
+
+[data_loader]
+num_workers = 0
+# must be (batch_lc * n_src):
+batch_size = 200
+
+[model_inputs.data]
+#dataset_class = "uncle_val.learning.lsdb_dataset.LSDBIterableDataset"
+dataset_class = "LSDBIterableDataset"
+data_location = "data/dp1"
+
+[data_set.LSDBDataGenerator]
+n_src = 10
+partitions_per_chunk = 20
+seed = 42
+
+[data_set.LSDBDataGenerator.catalog.dp1]
+root = "./data/dp1"
+band = "r"
+obj = "science"
+img = "cal"
+phot = "PSF"
+mode = "forced"
+
+[data_set.LSDBDataGenerator.dask.LocalCluster]
+n_workers = 8
+memory_limit = "8GB"
+threads_per_worker = 1
+
+[results]
+inference_dir = false

@@ -12,6 +12,7 @@ from lsdb import Catalog
 from nested_pandas import NestedFrame
 
 from uncle_val.datasets import dp1_catalog_single_band
+from uncle_val.utils.config_validation import validate_hyrax_batch_size
 
 
 class _FakeFuture:
@@ -173,7 +174,7 @@ class LSDBDataGenerator(Iterator[pd.Series]):
 
         dp1_catalog = dp1_catalog_single_band(**sub_config["catalog"]["dp1"])
 
-        dask_client_config = sub_config["dask"].get("LocalCluster", "none")
+        dask_client_config = sub_config["dask"]["LocalCluster"]
         if dask_client_config == "none" or not dask_client_config:
             client = None
         else:
@@ -184,11 +185,12 @@ class LSDBDataGenerator(Iterator[pd.Series]):
             raise ValueError(
                 f"Expected integer for `config['data_set']['LSDBDataGenerator']['n_src']`, but got {n_src}"
             )
+        validate_hyrax_batch_size(config)
 
-        partitions_per_chunk = config["data_set"][""].get("partitions_per_chunk", "none")
+        partitions_per_chunk = sub_config["partitions_per_chunk"]
         if partitions_per_chunk == "none":
             partitions_per_chunk = None
-        if partitions_per_chunk is not None or isinstance(partitions_per_chunk, int):
+        if not(partitions_per_chunk is None or isinstance(partitions_per_chunk, int)):
             raise ValueError(
                 f"Expected integer or 'none' for config['data_set']['LSDBDataGenerator']['partitions_per_chunk'], but got {partitions_per_chunk}"
             )
@@ -280,10 +282,13 @@ class LSDBDataGenerator(Iterator[pd.Series]):
 
 
 class LSDBIterableDataset(HyraxDataset):
-    def __init__(self, config: ConfigDict, metadata_table=None):
+    def __init__(self, config: ConfigDict, metadata_table=None, data_location=None):
+        del data_location
+
         if metadata_table is not None:
             raise NotImplementedError("metadata_table=None is not supported")
         super().__init__(config, metadata_table=metadata_table)
+
         self.lsdb_data_generator = LSDBDataGenerator.from_hyrax_config(config)
 
     def __iter__(self) -> Generator[dict, None, None]:

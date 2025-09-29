@@ -1,6 +1,7 @@
-import jax
-import jax.numpy as jnp
+from functools import partial
+
 import numpy as np
+import torch
 from numpy.testing import assert_allclose
 from uncle_val.whitening import whiten_data
 
@@ -24,13 +25,15 @@ def test_whiten_data():
     assert_allclose(np.std(z), 1.0, rtol=3.0 / np.sqrt(n_src * n_obj))
 
 
-def test_whiten_data_jax():
+def test_whiten_data_torch():
     """Test that whiten_data() doesn't fail when used with jax"""
     n_src = 1000
     rng = np.random.default_rng(42)
     err = rng.exponential(size=n_src)
     flux = rng.normal(loc=10, scale=err)
-    z = jax.jit(lambda *args: whiten_data(*args, np=jnp))(jnp.asarray(flux), jnp.asarray(err) ** 2)
+    z = torch.compile(partial(whiten_data, np=torch))(torch.tensor(flux), torch.tensor(err) ** 2)
+
+    z = np.asarray(z)
 
     assert_allclose(np.mean(z), 0.0, atol=3.0 / np.sqrt(n_src))
     assert_allclose(np.std(z), 1.0, rtol=3.0 / np.sqrt(n_src))

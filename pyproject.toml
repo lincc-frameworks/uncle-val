@@ -18,14 +18,13 @@ dynamic = ["version"]
 requires-python = ">=3.11"
 dependencies = [
     "dask[distributed]",  # version from lsdb
-    "flax>=0.11",
-    "jax",  # version from flax
     "hats",  # version from lsdb
+    "hyrax>=0.6.1,<0.7",
     "lsdb>=0.6.5,<0.7",
     "nested-pandas",  # version from lsdb
     "numpy>=2",
-    "optax>=0.2.6",
     "scipy>=1",
+    "torch>=2.8.0,<3",
     "tqdm>=4",
 ]
 

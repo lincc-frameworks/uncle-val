@@ -43,6 +43,9 @@ img = "cal"
 phot = "PSF"
 mode = "forced"
 
+[data_set.LSDBDataGenerator.dask]
+cluster_type = "none"
+
 [data_set.LSDBDataGenerator.dask.LocalCluster]
 n_workers = 8
 memory_limit = "8GB"

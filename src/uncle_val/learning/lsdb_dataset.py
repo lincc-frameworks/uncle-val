@@ -174,11 +174,17 @@ class LSDBDataGenerator(Iterator[pd.Series]):
 
         dp1_catalog = dp1_catalog_single_band(**sub_config["catalog"]["dp1"])
 
-        dask_client_config = sub_config["dask"]["LocalCluster"]
-        if dask_client_config == "none" or not dask_client_config:
+        dask_cluster_type = sub_config["dask"]["cluster_type"]
+        if dask_cluster_type == "none":
             client = None
+        elif dask_cluster_type == "LocalCluster":
+            dask_local_cluster_config = sub_config["dask"]["LocalCluster"]
+            client = dask.distributed.Client(**dask_local_cluster_config)
         else:
-            client = dask.distributed.Client(**dask_client_config)
+            raise ValueError(
+                f"Invalid `{config['data_set']['LSDBDataGenerator']['dask']['client'] = }`, "
+                "supported values are 'none' and 'LocalCluster'."
+            )
 
         n_src = sub_config["n_src"]
         if not isinstance(n_src, int):

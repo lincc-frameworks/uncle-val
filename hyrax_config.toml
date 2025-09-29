@@ -44,8 +44,9 @@ phot = "PSF"
 mode = "forced"
 
 [data_set.LSDBDataGenerator.dask]
-cluster_type = "none"
+cluster_type = "LocalCluster"  # none or LocalCLuster
 
+# kwargs to pass to `dask.distributed.CLient(**kwargs)`
 [data_set.LSDBDataGenerator.dask.LocalCluster]
 n_workers = 8
 memory_limit = "8GB"

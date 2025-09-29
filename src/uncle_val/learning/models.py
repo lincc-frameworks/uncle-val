@@ -133,9 +133,11 @@ class LinearModel(torch.nn.Module):
     err_scaler_lg_upper = 5.0
     err_scaler_lg_interval = err_scaler_lg_upper - err_scaler_lg_lower
 
-    def __init__(self, config, shape) -> None:
+    def __init__(self, config, data_sample) -> None:
         super().__init__()
-        self.layers = torch.nn.Linear(shape, 1)
+        self.config = config
+        input_d = len(data_sample["data"])
+        self.layers = torch.nn.Linear(input_d, 1)
         self.loss = import_by_name(config["model"]["loss_fn"])
         self.n_src = config["data_set"]["LSDBDataGenerator"]["n_src"]
         if not isinstance(self.n_src, int):

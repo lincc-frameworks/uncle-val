@@ -46,7 +46,7 @@ def _process_partition_single_band(
 ):
     # Normalize column names
     df = _rename_columns(df, lc_col=lc_col, id_col=id_col, flux_col=flux_col, flux_err_col=flux_err_col)
-    df = df.rename(columns={f"{band}_psgMag": "object_mag"})
+    df = df.rename(columns={f"{band}_psgMag": "object_mag", f"{band}_extendedness": "extendedness"})
 
     # Filter by band
     df = df.query(f"lc.band == {band!r}")
@@ -68,15 +68,24 @@ def _split_light_curves_by_band(
     lc_col,
 ):
     single_band_dfs = []
+
     for band in bands:
         single_band = df.query(f"{lc_col}.band == {band!r}")
+
         single_band = single_band.drop(labels=[f"{lc_col}.band"], axis=1)
         single_band["band"] = band
+
         single_band["object_mag"] = single_band[f"{band}_psfMag"]
         single_band = single_band.drop(columns=[f"{band}_psfMag" for band in LSDB_BANDS])
+
+        single_band["extendedness"] = single_band[f"{band}_extendedness"]
+        single_band = single_band.drop(columns=[f"{band}_extendedness" for band in LSDB_BANDS])
+
         single_band_dfs.append(single_band)
+
     if all(sb.empty for sb in single_band_dfs):
         return single_band_dfs[0]
+
     return pd.concat(single_band_dfs)
 
 
@@ -98,7 +107,7 @@ def _process_partition_multi_band(
 
     # Filter bands, and split light curves (rows) by band
     df = _split_light_curves_by_band(df, bands=bands, lc_col="lc")
-    df = df.dropna(subset=["lc", "object_mag"])
+    df = df.dropna(subset=["lc", "object_mag", "extendedness"])
 
     # Encode band names
     df = _one_hot_encode_band(df, dtype=bool)
@@ -150,6 +159,8 @@ def _open_catalog(
 
     obj_mag_cols = [f"{band}_psfMag" for band in bands]
 
+    obj_extendedness_cols = [f"{band}_extendedness" for band in bands]
+
     other_flag_cols = [
         "pixelFlags_suspect",
         "pixelFlags_saturated",
@@ -167,7 +178,8 @@ def _open_catalog(
             f"{source_col}.{flux_flag_col}",
         ]
         + [f"{source_col}.{flag_col}" for flag_col in other_flag_cols]
-        + obj_mag_cols,
+        + obj_mag_cols
+        + obj_extendedness_cols,
     )
     return catalog, {
         "id_col": id_col,
@@ -248,8 +260,13 @@ def dp1_catalog_multi_band(
     "is_u_band", "is_g_band", etc. columns. It replaces "u_psfMag", etc
     columns with a single "object_mag" column. Rows with Null "object_mag"
     values are dropped.
+    Similarly for "u_extendedness", etc, we rename it to "extendedness", and
+    drop Null values.
 
-    It does photometric flags based filtering and also "normalizes"
+    It filters by source's photometric flags, u_psfFlux_flag, etc.,
+    and u_extendedness_flag, etc.
+
+    It also "normalizes"
     column names:
     - "source" nested columns is "lc"
     - source flux is "x"

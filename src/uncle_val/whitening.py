@@ -1,21 +1,22 @@
 import numpy
 
 
-def stable_decomposition(a, *, np=numpy):
+def _stable_decomposition(a, *, np=numpy):
     """Matrix decomposition for a constant-fit covariance matrix"""
     n = len(a)
+    n_float = np.asarray(n, dtype=a.dtype)
     mat_d = np.diag(a)
-    one_vec = np.ones((n, 1)) / np.sqrt(n)
+    one_vec = np.ones((n, 1), dtype=a.dtype) / np.sqrt(n_float)
 
-    inv_a_sum = np.sum(1 / a)
+    inv_a_sum = np.sum(1.0 / a)
     u = np.ones((n, 1)) / np.sqrt(inv_a_sum)
 
     # Explicit eigenvalue along ones-vector:
-    lambda_min = (one_vec.T @ (mat_d - u @ u.T) @ one_vec)[0, 0]
+    lambda_min = (one_vec.T @ (mat_d - u @ u.T) @ one_vec).squeeze()
     if np is numpy:
         assert lambda_min > 0
     else:
-        lambda_min = np.maximum(lambda_min, 1e-8)
+        lambda_min = np.maximum(lambda_min, np.asarray(1e-8))
 
     # Construct orthonormal basis explicitly:
     mat_q, _ = np.linalg.qr(np.eye(n) - one_vec @ one_vec.T)
@@ -28,7 +29,8 @@ def stable_decomposition(a, *, np=numpy):
         assert np.all(eigvals_orth > 0)
 
     # Combine eigenvectors/eigenvalues explicitly:
-    eigvals_full = np.insert(eigvals_orth, 0, lambda_min)
+    # We could use np.insert, but it doesn't exist in torch
+    eigvals_full = np.concatenate([np.atleast_1d(lambda_min), eigvals_orth])
     eigvecs_full = np.hstack([one_vec, mat_q @ eigvecs_orth])
 
     # Cholesky-like decomposition
@@ -47,10 +49,13 @@ def whiten_data(x, v, *, np=numpy):
     mean_v = np.mean(v)
     v = v / mean_v
 
-    decomposed = stable_decomposition(v, np=np)
+    decomposed = _stable_decomposition(v, np=np)
     transform = np.linalg.inv(decomposed)
 
-    mu = np.average(x, weights=1 / v)
+    # We can use np.average(x, weights=1/v), but it doesn't exist in torch
+    weights = 1 / v
+    mu = np.sum(x * weights) / np.sum(weights)
+
     residual = (x - mu) / np.sqrt(mean_v)
     z = transform @ residual
 

@@ -1,21 +1,13 @@
-from collections.abc import Iterator
-from typing import Self
+from collections.abc import Generator
 
 import dask
 import numpy as np
 import pandas as pd
-from dask.distributed import Client, Future
 from hats import HealpixPixel
 from lsdb import Catalog
 from nested_pandas import NestedFrame
 
-
-class _FakeFuture:
-    def __init__(self, obj):
-        self.obj = obj
-
-    def result(self):
-        return self.obj
+from uncle_val.datasets.lsdb_generator import LSDBDataGenerator
 
 
 def _reduce_all_columns_wrapper(*args, columns=None, udf, **kwargs):
@@ -73,138 +65,54 @@ def _process_partition(
     return fixed_length_series
 
 
-class LSDBDataGenerator(Iterator[pd.Series]):
-    """Generator yielding training data from an LSDB nested_series
+def nested_series_data_generator(
+    catalog: Catalog,
+    *,
+    lc_col: str = "lc",
+    client: dask.distributed.Client | None,
+    n_src: int,
+    partitions_per_chunk: int | None,
+    seed: int,
+) -> Generator[pd.Series, None, None]:
+    """Generator of nested_pandas.NestedSeries of sampled catalog data
 
     The data is pre-fetched on the background, 'n_workers' number
     of partitions per time (derived from `client` object).
     It filters out light curves with less than `n_src` observations,
     and selects `n_src` random observations per light curve.
 
-    Catalog must have the only nested column, which is interpreted as a light
-    curve data.
-
     Parameters
     ----------
-    catalog : lsdb.Catalog
-        LSDB nested_series object.
-    client : dask.distributed.Client or None
-        Dask client for distributed computation. None means running
-        in a synced way with `dask.compute()` instead of asynced with
-        `client.compute()`.
+    catalog : Catalog
+        LSDB catalog, should have the only nested column, `lc_col`.
+    lc_col : str, optional
+        LSDB light curve column name, default is "lc".
+    client : dask.distributed.Client or None, optional
+        Dask client to use, default is None, which would not lock on each next
+        value. If Dask client is given, the data would be fetched on the
+        background.
     n_src : int
-        Number of observations per light curve.
+        Number of random observations per light curve.
     partitions_per_chunk : int or None
-        Number of partitions to yield, default is None, which makes it equal
-        to number of Dask workers being run with Dask client.
+        Number of `catalog` partitions per time, if None it is derived
+        from the number of dask workers associated with `Client` (one if
+        no workers or None `Client`).
+        This changes the randomness.
     seed : int
-        Random seed to use for observation sampling.
+        Random seed to use for shuffling.
 
-    Methods
-    -------
-    __next__() -> pd.Series
-        Provides light curves as a nested series.
+    Yields
+    ------
+    nested_pandas.NestedSeries
+        NestedSeries of sampled catalog data, one row per light curve.
     """
-
-    def __init__(
-        self,
-        *,
-        catalog: Catalog,
-        client: Client | None,
-        n_src: int,
-        partitions_per_chunk: int | None = None,
-        seed: int,
-    ) -> None:
-        self.client = client
-        self.n_src = n_src
-        self.seed = seed
-        self.partitions_per_chunk = self._get_partitions_per_chunk(partitions_per_chunk, client)
-        self.rng = np.random.default_rng((1 << 32, seed))
-
-        self.partitions_left = self._shuffle_partitions(catalog, self.rng)
-        if len(self.partitions_left) == 0:
-            raise ValueError("Catalog must have at least one partition")
-        self._empty = False
-
-        self.lc_col = self._get_lc_col(catalog)
-
-        self.nested_series = catalog.map_partitions(
-            _process_partition,
-            include_pixel=True,
-            n_src=self.n_src,
-            lc_col=self.lc_col,
-            seed=self.seed,
-        )
-
-        self.future = self._submit_next_partitions()
-
-    @staticmethod
-    def _shuffle_partitions(catalog: Catalog, rng: np.random.Generator) -> list[int]:
-        return rng.permutation(catalog.npartitions).tolist()
-
-    @staticmethod
-    def _get_lc_col(catalog: Catalog) -> str:
-        nested_columns = catalog.nested_columns
-        if len(nested_columns) == 0:
-            raise ValueError("Catalog must have at least one nested column")
-        if len(nested_columns) > 1:
-            raise ValueError(
-                "Catalog must have at most one nested column, these nested columns are found: "
-                f"{nested_columns}"
-            )
-        nested_column = nested_columns[0]
-        return nested_column
-
-    @staticmethod
-    def _get_partitions_per_chunk(input_chunk_size, client) -> int:
-        """Number of chunk to yield, either given or number of Dask workers
-
-        Returns one if no chunk size is given and workers are available yet
-        (or no client is given).
-
-        Returns
-        -------
-        int
-            Number of partitions to yield.
-        """
-        if input_chunk_size is not None:
-            return input_chunk_size
-        if client is None:
-            return 1
-        n_workers = len(client.scheduler_info().get("workers", []))
-        n_workers = n_workers if n_workers > 0 else 1
-        return n_workers
-
-    def _submit_next_partitions(self) -> Future | _FakeFuture:
-        self.partitions_left, partitions = (
-            self.partitions_left[: -self.partitions_per_chunk],
-            self.partitions_left[-self.partitions_per_chunk :],
-        )
-        sliced_series = self.nested_series.partitions[partitions]
-
-        if self.client is None:
-            future = _FakeFuture(dask.compute(sliced_series)[0])
-        else:
-            future = self.client.compute(sliced_series)
-        return future
-
-    def __iter__(self) -> Self:
-        return self
-
-    def __next__(self) -> pd.Series:
-        if self._empty:
-            raise StopIteration("All partitions have been processed")
-
-        nested_series = self.future.result()
-        result = nested_series.sample(frac=1, random_state=self.rng)
-
-        if len(self.partitions_left) > 0:
-            self.future = self._submit_next_partitions()
-        else:
-            self._empty = True
-            self.future = None
-
-        return result
-
-    def __len__(self) -> int:
-        return int(np.ceil(len(self.partitions_left) / self.partitions_per_chunk))
+    dask_series = catalog.map_partitions(
+        _process_partition, include_pixel=True, n_src=n_src, lc_col=lc_col, seed=seed
+    )
+    lsdb_generator = LSDBDataGenerator(
+        catalog=dask_series,
+        client=client,
+        partitions_per_chunk=partitions_per_chunk,
+        seed=seed,
+    )
+    yield from lsdb_generator

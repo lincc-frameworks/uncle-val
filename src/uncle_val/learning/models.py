@@ -1,4 +1,3 @@
-from collections.abc import Sequence
 from functools import cached_property
 
 import torch

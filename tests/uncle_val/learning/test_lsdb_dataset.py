@@ -5,7 +5,7 @@ import pytest
 from dask.distributed import Client
 from numpy.testing import assert_array_equal
 from uncle_val.datasets.fake import fake_non_variable_lcs
-from uncle_val.learning.lsdb_dataset import LSDBDataGenerator
+from uncle_val.learning.lsdb_dataset import nested_series_data_generator
 
 
 @pytest.mark.parametrize("client", ("dask", None))
@@ -21,21 +21,25 @@ def test_lsdb_data_generator(client):
     input_n_src = np.r_[[output_n_src // 2] * (input_n_obj - output_n_obj), [output_n_src] * output_n_obj]
     u = 1.0
 
-    input_nf = fake_non_variable_lcs(
-        n_obj=input_n_obj,
-        n_src=input_n_src,
-        err=None,
-        u=u,
-        rng=rng,
+    input_nf = next(
+        fake_non_variable_lcs(
+            n_batches=1,
+            n_obj=input_n_obj,
+            n_src=input_n_src,
+            err=None,
+            u=u,
+            rng=rng,
+        )
     )
     input_nf["ra"] = np.linspace(0.0, 360.0, input_n_obj)
     input_nf["dec"] = np.linspace(0.0, 90.0, input_n_obj)
-    del input_nf["objectId"]
+    del input_nf["id"]
     catalog = lsdb.from_dataframe(input_nf)
 
-    gen = LSDBDataGenerator(
+    gen = nested_series_data_generator(
         catalog=catalog,
         client=client,
+        lc_col="lc",
         n_src=output_n_src,
         partitions_per_chunk=None,
         seed=rng.integers(1 << 63),

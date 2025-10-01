@@ -38,21 +38,24 @@ def run_model(
     n_src = np_rng.integers(n_src_training, 150, size=n_obj)
     u = 2.0
 
-    nf = fake_non_variable_lcs(
-        n_obj=n_obj,
-        n_src=n_src,
-        err=None,
-        u=u,
-        rng=np_rng,
+    nf = next(
+        fake_non_variable_lcs(
+            n_batches=1,
+            n_obj=n_obj,
+            n_src=n_src,
+            err=None,
+            u=u,
+            rng=np_rng,
+        )
     )
-    ln_fluxes = np.log(nf["objectForcedSource.psfFlux"])
-    nf["objectForcedSource.norm_flux"] = (ln_fluxes - np.mean(ln_fluxes)) / np.std(ln_fluxes)
-    ln_errs = np.log(nf["objectForcedSource.psfFluxErr"])
-    nf["objectForcedSource.norm_err"] = (ln_errs - np.mean(ln_errs)) / np.std(ln_errs)
+    ln_fluxes = np.log(nf["lc.x"])
+    nf["lc.norm_flux"] = (ln_fluxes - np.mean(ln_fluxes)) / np.std(ln_fluxes)
+    ln_errs = np.log(nf["lc.err"])
+    nf["lc.norm_err"] = (ln_errs - np.mean(ln_errs)) / np.std(ln_errs)
 
-    struct_array = nf["objectForcedSource"].array.struct_array.combine_chunks()
-    flux_arr = struct_array.field("psfFlux")
-    err_arr = struct_array.field("psfFluxErr")
+    struct_array = nf["lc"].array.struct_array.combine_chunks()
+    flux_arr = struct_array.field("x")
+    err_arr = struct_array.field("err")
     norm_flux_arr = struct_array.field("norm_flux")
     norm_err_arr = struct_array.field("norm_err")
 

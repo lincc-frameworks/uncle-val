@@ -1,13 +1,20 @@
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
+from functools import cached_property
 
-from flax import nnx
-from jax import numpy as jnp
+import torch
+
+from uncle_val.utils.mag_flux import mag2flux
 
 
-class UncleModel(nnx.Module):
+class UncleModel(torch.nn.Module):
     """Base class for u-function learning
 
-    You must re-implement __init__() to call super and to assign .module.
+    You must re-implement __init__() to call super().__init__()
+    and to assign `.module`.
+    You may also want to override `.norm_inputs()` to account for
+    extra input dimensions. The base class implementation assumes that
+    the first two dimensions are for flux and error.
+
     The output is either 1-d or 2-d:
     - 0th index is -ln(uu), so u = exp(-output[0])
     - 1st index is ln(s - 1), so s = exp(output[1]) - 1
@@ -20,80 +27,104 @@ class UncleModel(nnx.Module):
 
     Parameters
     ----------
-    d_input : int
-        Number of input parameters, e.g. length of theta
     d_output : int
         Number of output parameters, 1 for u, 2 for [u, l].
-    rngs : flax.nnx.Rngs
-        Random number generator for parameter initialization
     """
 
-    module: Callable
+    module: torch.nn.Module
 
-    def __init__(self, *, d_input, d_output, rngs):
-        self.d_input = d_input
-        if d_output not in [1, 2]:
+    norm_flux_scale_mag = 23.0
+    norm_flux_max_mag = 14.0
+
+    norm_err_lgmin = -1.0
+    norm_err_lgmax = 4.0
+
+    def __init__(self, *, d_output: int) -> None:
+        super().__init__()
+
+        if d_output not in {1, 2}:
             raise ValueError("d_output must be 1 (for u) or 2 (for u and s)")
         self.d_output = d_output
-        self.rngs = rngs
         self.outputs_s = d_output == 2
 
-    def __call__(self, x):
+    @cached_property
+    def norm_flux_scale(self) -> torch.Tensor:
+        return torch.tensor(mag2flux(self.norm_flux_scale_mag))
+
+    @cached_property
+    def norm_flux_amplitude(self) -> torch.Tensor:
+        norm_flux_max = torch.tensor(mag2flux(self.norm_flux_max_mag))
+        return 1.0 / torch.arcsinh(norm_flux_max / self.norm_flux_scale)
+
+    def norm_flux(self, flux: torch.Tensor) -> torch.Tensor:
+        """Normalize flux."""
+        return torch.arcsinh(flux / self.norm_flux_scale) * self.norm_flux_amplitude
+
+    @cached_property
+    def norm_err_lgrange(self) -> torch.Tensor:
+        return torch.tensor(self.norm_err_lgmax - self.norm_err_lgmin)
+
+    def norm_err(self, err: torch.Tensor) -> torch.Tensor:
+        """Normalize flux error."""
+        lg_err = torch.log10(err)
+        return (lg_err - self.norm_err_lgmin) / self.norm_flux_scale
+
+    def norm_inputs(self, x: torch.Tensor) -> torch.Tensor:
+        """Normalizes inputs in place"""
+        x[..., 0] = self.norm_flux(x[..., 0])
+        x[..., 1] = self.norm_err(x[..., 1])
+        return x
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Compute the output of the model"""
-        output = self.module(x)
-        u = jnp.exp(-output[..., 0])
-        if not self.outputs_s:
-            return u[..., None]
-        s = jnp.expm1(output[..., 1])
-        return jnp.stack([u, s], axis=-1)
-
-    def corrections(self, x):
-        """Outputs a tuple of u and s correction factors"""
-        model_output = self(x)
-        u = model_output[..., 0]
-        s = model_output[..., 1] if self.outputs_s else 0.0
-        return u, s
+        output = self.module(self.norm_inputs(x))
+        # u, uncertainty underestimation
+        output[..., 0] = torch.exp(-output[..., 0])
+        # s, flux shift
+        if self.outputs_s:
+            output[..., 1] = torch.expm1(output[..., 1])
+        return output
 
 
-class MLPModel(UncleModel):
-    """Multi-layer Perceptron (MLP) model for the Uncle function
-
-    Parameters
-    ----------
-    d_input : int
-        Number of input parameters, e.g. length of theta
-    d_middle : list of int
-        Size of hidden module, e.g. [64, 32, 16]
-    d_output : int
-        Number of output parameters, 1 for u, 2 for [u, l].
-    dropout : float | None
-        Dropout probability, do not use dropout layer if None.
-    rngs : flax.nnx.Rangs
-        Random number generator for parameter initialization.
-    """
-
-    def __init__(
-        self,
-        *,
-        d_input: int,
-        d_middle: Sequence[int] = (300, 300, 400),
-        d_output: int = 1,
-        dropout: None | float = None,
-        rngs: nnx.Rngs,
-    ):
-        super().__init__(d_input=d_input, d_output=d_output, rngs=rngs)
-        self.d_middle = list(d_middle)
-        self.dropout = dropout
-
-        layers = []
-        dims = [self.d_input] + self.d_middle + [self.d_output]
-        for i, (d1, d2) in enumerate(zip(dims[:-1], dims[1:], strict=False)):
-            layers.append(nnx.Linear(d1, d2, rngs=self.rngs, kernel_init=nnx.initializers.normal()))
-            if i < len(dims) - 2:  # not the last layer
-                layers.append(nnx.relu)
-                if self.dropout is not None:
-                    layers.append(nnx.Dropout(self.dropout, rngs=self.rngs))
-        self.module = nnx.Sequential(*layers)
+# class MLPModel(UncleModel):
+#     """Multi-layer Perceptron (MLP) model for the Uncle function
+#
+#     Parameters
+#     ----------
+#     d_input : int
+#         Number of input parameters, e.g. length of theta
+#     d_middle : list of int
+#         Size of hidden module, e.g. [64, 32, 16]
+#     d_output : int
+#         Number of output parameters, 1 for u, 2 for [u, l].
+#     dropout : float | None
+#         Dropout probability, do not use dropout layer if None.
+#     rngs : flax.nnx.Rangs
+#         Random number generator for parameter initialization.
+#     """
+#
+#     def __init__(
+#         self,
+#         *,
+#         d_input: int,
+#         d_middle: Sequence[int] = (300, 300, 400),
+#         d_output: int = 1,
+#         dropout: None | float = None,
+#         rngs: nnx.Rngs,
+#     ):
+#         super().__init__(d_input=d_input, d_output=d_output, rngs=rngs)
+#         self.d_middle = list(d_middle)
+#         self.dropout = dropout
+#
+#         layers = []
+#         dims = [self.d_input] + self.d_middle + [self.d_output]
+#         for i, (d1, d2) in enumerate(zip(dims[:-1], dims[1:], strict=False)):
+#             layers.append(nnx.Linear(d1, d2, rngs=self.rngs, kernel_init=nnx.initializers.normal()))
+#             if i < len(dims) - 2:  # not the last layer
+#                 layers.append(nnx.relu)
+#                 if self.dropout is not None:
+#                     layers.append(nnx.Dropout(self.dropout, rngs=self.rngs))
+#         self.module = nnx.Sequential(*layers)
 
 
 class LinearModel(UncleModel):
@@ -101,16 +132,12 @@ class LinearModel(UncleModel):
 
     Parameters
     ----------
-    d_input : int
-        Number of input parameters, e.g. length of theta
     d_output : int
         Number of output parameters, 1 for u, 2 for [u, l].
-    rngs : flax.nnx.Rngs
-        Random number generator for parameter initialization
     """
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.module = nnx.Linear(
-            self.d_input, self.d_output, rngs=self.rngs, kernel_init=nnx.initializers.normal()
-        )
+    def __init__(self, d_input: int, d_output: int) -> None:
+        super().__init__(d_output=d_output)
+
+        self.d_input = d_input
+        self.module = torch.nn.Linear(self.d_input, self.d_output, bias=True)

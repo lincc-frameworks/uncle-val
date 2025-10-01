@@ -1,8 +1,14 @@
-import numpy
+import numpy as np
+from numba import njit
 
 
+@njit
 def detect_mag_amplitude(
-    flux, err, *, max_mag_err: float = 0.05, min_amplitude: float = 1.0, np=numpy
+    flux,
+    err,
+    *,
+    max_mag_err: float = 0.05,
+    min_amplitude: float = 1.0,
 ) -> bool:
     """Detects variability by large amplitude deviations.
 
@@ -20,8 +26,6 @@ def detect_mag_amplitude(
         Maximum allowed magnitude error.
     min_amplitude : float, optional
         Minimum allowed magnitude amplitude.
-    np : module
-        numpy-compatible module, such as `numpy` or `jax.numpy`.
 
     Returns
     -------
@@ -31,20 +35,24 @@ def detect_mag_amplitude(
     pos_flux_idx = flux > 0
     flux, err = flux[pos_flux_idx], err[pos_flux_idx]
 
+    if len(flux) < 2:
+        return False
+
     mag = 31.2 - 2.5 * np.log10(flux)
     mag_err = 2.5 / np.log(10) * err / flux
 
     small_err = mag_err < max_mag_err
     mag, mag_err = mag[small_err], mag_err[small_err]
 
-    if len(mag) == 0:
+    if len(mag) < 2:
         return False
 
     large_amplitude = np.ptp(mag) >= min_amplitude
     return large_amplitude
 
 
-def detect_deviation_outlier(flux, err, *, n_sigma: float = 5.0, np=numpy) -> bool:
+@njit
+def detect_deviation_outlier(flux, err, *, n_sigma: float = 5.0) -> bool:
     """Detects variability by outlier detection, in deviation space
 
     First, it converts light curve to deviations,
@@ -61,8 +69,6 @@ def detect_deviation_outlier(flux, err, *, n_sigma: float = 5.0, np=numpy) -> bo
         Error array.
     n_sigma : float, optional
         Number of standard deviations to use as a threshold.
-    np : module
-        numpy-compatible module, such as `numpy` or `jax.numpy`.
 
     Returns
     -------
@@ -79,8 +85,9 @@ def detect_deviation_outlier(flux, err, *, n_sigma: float = 5.0, np=numpy) -> bo
     return any_outliers
 
 
+@njit
 def detect_autocorrelation(
-    flux, err=None, *, norm_threshold: float = 5.0, min_median_derivation: float = 1e-6, np=numpy
+    flux, err=None, *, norm_threshold: float = 5.0, min_median_deviation: float = 1e-6
 ) -> bool:
     r"""Detects variability by checking single-step autocorrelation
 
@@ -98,33 +105,27 @@ def detect_autocorrelation(
         Error array, not used.
     norm_threshold : float, optional
         Minimum allowed normalized autocorrelation value. We normalize by
-        1) taking absolute value, 2) multipyling by the total number of
+        1) taking absolute value, 2) multiplying by the total number of
         sources.
-    min_median_derivation : float, optional
+    min_median_deviation : float, optional
         Minimum ratio of flux amplitude to median flux.
-    np : module
-        numpy-compatible module, such as `numpy` or `jax.numpy`.
 
     Returns
     -------
     bool
         `True` if light curve is variable, `False` otherwise.
     """
-    del err
-
     n = len(flux)
     if n < 2:
         return False
 
     median_flux = np.median(flux)
 
-    if np.ptp(flux) / median_flux <= min_median_derivation:
+    if np.ptp(flux) / median_flux <= min_median_deviation:
         return False
 
     numerator = np.sum((flux[:-1] - median_flux) * (flux[1:] - median_flux))
     denominator = np.sum(np.square(flux - median_flux))
-    if denominator == 0:
-        return False
     norm_l1 = n * np.abs(numerator) / denominator
 
     exceeded = norm_l1 > norm_threshold

@@ -1,8 +1,13 @@
 import numpy
+from numba.extending import register_jitable
 
 
-def _stable_decomposition(a, *, np=numpy):
+@register_jitable
+def _stable_decomposition(a, np=None):
     """Matrix decomposition for a constant-fit covariance matrix"""
+    if np is None:
+        np = numpy
+
     n = len(a)
     n_float = np.asarray(n, dtype=a.dtype)
     mat_d = np.diag(a)
@@ -12,11 +17,8 @@ def _stable_decomposition(a, *, np=numpy):
     u = np.ones((n, 1)) / np.sqrt(inv_a_sum)
 
     # Explicit eigenvalue along ones-vector:
-    lambda_min = (one_vec.T @ (mat_d - u @ u.T) @ one_vec).squeeze()
-    if np is numpy:
-        assert lambda_min > 0
-    else:
-        lambda_min = np.maximum(lambda_min, np.asarray(1e-8))
+    lambda_min = (one_vec.T @ (mat_d - u @ u.T) @ one_vec)[0]
+    lambda_min = np.maximum(lambda_min, np.asarray(1e-8))
 
     # Construct orthonormal basis explicitly:
     mat_q, _ = np.linalg.qr(np.eye(n) - one_vec @ one_vec.T)
@@ -25,13 +27,11 @@ def _stable_decomposition(a, *, np=numpy):
     # Project onto orthogonal subspace:
     m_orth = mat_q.T @ (mat_d - u @ u.T) @ mat_q
     eigvals_orth, eigvecs_orth = np.linalg.eigh(m_orth)
-    if np is numpy:
-        assert np.all(eigvals_orth > 0)
 
     # Combine eigenvectors/eigenvalues explicitly:
     # We could use np.insert, but it doesn't exist in torch
-    eigvals_full = np.concatenate([np.atleast_1d(lambda_min), eigvals_orth])
-    eigvecs_full = np.hstack([one_vec, mat_q @ eigvecs_orth])
+    eigvals_full = np.concatenate((lambda_min, eigvals_orth))
+    eigvecs_full = np.hstack((one_vec, mat_q @ eigvecs_orth))
 
     # Cholesky-like decomposition
     mat_b = eigvecs_full @ np.diag(np.sqrt(eigvals_full))
@@ -39,13 +39,25 @@ def _stable_decomposition(a, *, np=numpy):
     return mat_b
 
 
-def whiten_data(x, v, *, np=numpy):
+def whiten_data(x, v, *, np=None):
     """Whitening of Gaussian time-independent data
 
     It is assumed that each x[i] ~ N(mu, v[i]),
     where the mean mu is unknown, but constant value,
     variance is known v, and all x[i] are independent.
+
+    Parameters
+    ----------
+    x : array, (n_src,)
+        Input signal
+    v : array, (n_src,)
+        Signal variance
+    np : module, optional
+        Numpy-compatible module, numpy, jax.numpy and torch are supported
     """
+    if np is None:
+        np = numpy
+
     mean_v = np.mean(v)
     v = v / mean_v
 

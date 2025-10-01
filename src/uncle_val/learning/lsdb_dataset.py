@@ -3,9 +3,11 @@ from collections.abc import Generator
 import dask
 import numpy as np
 import pandas as pd
+import torch
 from hats import HealpixPixel
 from lsdb import Catalog
 from nested_pandas import NestedFrame
+from torch.utils.data import IterableDataset
 
 from uncle_val.datasets.lsdb_generator import LSDBDataGenerator
 
@@ -116,3 +118,68 @@ def nested_series_data_generator(
         seed=seed,
     )
     yield from lsdb_generator
+
+
+class LSDBIterableDataset(IterableDataset):
+    """Iterable dataset fetching data through LSDB, use num_workers=0
+
+    Torch iterable dataset fetching data using LSDB. When used with
+    a torch DataLoader, num_workers=0 (default) must be used.
+
+    It yields `torch.Tensor` objects of shape (batch_lc, n_src).
+
+    Parameters
+    ----------
+    catalog : Catalog
+        LSDB catalog, should have the only nested column, `lc_col`.
+    lc_col : str, optional
+        LSDB light curve column name, default is "lc".
+    client : dask.distributed.Client or None, optional
+        Dask client to use, default is None, which would not lock on each next
+        value. If Dask client is given, the data would be fetched on the
+        background.
+    batch_lc : int
+        Number of batches to yield.
+    n_src : int
+        Number of random observations per light curve.
+    partitions_per_chunk : int or None
+        Number of `catalog` partitions per time, if None it is derived
+        from the number of dask workers associated with `Client` (one if
+        no workers or None `Client`).
+        This changes the randomness.
+    seed : int
+        Random seed to use for shuffling.
+
+    See Also
+    --------
+    `nested_series_data_generator`, `LSDBDataGenerator`
+    """
+    def __init__(
+        self,
+        catalog: Catalog,
+        *,
+        lc_col: str = "lc",
+        client: dask.distributed.Client | None,
+        batch_lc: int,
+        n_src: int,
+        partitions_per_chunk: int | None,
+        seed: int,
+    ):
+        self.nested_series_gen = nested_series_data_generator(
+            catalog=catalog,
+            lc_col=lc_col,
+            client=client,
+            partitions_per_chunk=partitions_per_chunk,
+            n_src=n_src,
+            seed=seed,
+        )
+        self.batch_lc = batch_lc
+        self.n_src = n_src
+
+    def __iter__(self) -> Generator[torch.Tensor, None, None]:
+        for nested_series in self.nested_series_gen:
+            for i in range(0, len(nested_series), self.batch_lc):
+                batch_series = nested_series.iloc[i : i + self.batch_lc]
+                batch_flat_df = batch_series.nest.to_flat()
+                np_array = np.asarray(batch_flat_df).reshape(self.batch_lc, self.n_src)
+                yield torch.tensor(np_array)

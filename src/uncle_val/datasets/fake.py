@@ -8,8 +8,7 @@ from scipy import stats
 
 def _fake_non_variable_lcs(
     *,
-    n_obj: int,
-    n_src: NDArray,
+    n_src: NDArray[int],
     err: Callable[[float, np.random.Generator], float],
     u: Callable[[float, float], float],
     rng: np.random.Generator,
@@ -41,7 +40,7 @@ def fake_non_variable_lcs(
     *,
     n_batches: int = 1,
     n_obj: int = 1000,
-    n_src: int | NDArray = 100,
+    n_src: int | NDArray[int] = 100,
     err: None | Callable[[float, np.random.Generator], float] = None,
     u: float | Callable[[float, float], float] = 1.0,
     rng: np.random.Generator,
@@ -92,4 +91,4 @@ def fake_non_variable_lcs(
     rng = np.random.default_rng(rng)
 
     for _ in range(n_batches):
-        yield _fake_non_variable_lcs(n_obj=n_obj, n_src=n_src, err=err_func, u=u_func, rng=rng)
+        yield _fake_non_variable_lcs(n_src=n_src, err=err_func, u=u_func, rng=rng)

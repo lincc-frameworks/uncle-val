@@ -67,7 +67,7 @@ def minus_ln_chi2_prob(flux: torch.Tensor, err: torch.Tensor) -> torch.Tensor:
     torch.Tensor, of shape ()
         Loss value
     """
-    chi2_func = torch.vmap(_chi2_lc, in_axes=(0, 0), out_axes=0)
+    chi2_func = torch.vmap(_chi2_lc)
     chi2_batch = chi2_func(flux, err)
     chi2 = torch.sum(chi2_batch)
 
@@ -98,8 +98,8 @@ def kl_divergence_whiten(flux: Tensor, err: Tensor) -> Tensor:
     torch.Tensor, of shape ()
         Loss value
     """
-    whiten_func = torch.vmap(partial(whiten_data, np=torch), in_axes=(0, 0), out_axes=0)
-    z = whiten_func(flux, err)
+    whiten_func = torch.vmap(partial(whiten_data, np=torch))
+    z = whiten_func(flux, err**2)
     mu_z = torch.mean(z)
     # ddof is always 1 (not number of light curves), because "target" mu=0 for all whiten data points
     var_z = torch.var(z, correction=1)

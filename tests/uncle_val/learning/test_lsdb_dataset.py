@@ -6,10 +6,11 @@ import torch
 from dask.distributed import Client
 from numpy.testing import assert_array_equal
 from uncle_val.datasets.fake import fake_non_variable_lcs
-from uncle_val.learning.lsdb_dataset import lsdb_nested_series_data_generator, LSDBIterableDataset
+from uncle_val.learning.lsdb_dataset import LSDBIterableDataset, lsdb_nested_series_data_generator
 
 
 def generate_fake_catalog(output_n_obj, output_n_src, rng):
+    """Generate catalog of fake data for tests."""
     input_n_obj = output_n_obj * 2 + 123
     input_n_src = np.r_[[output_n_src // 2] * (input_n_obj - output_n_obj), [output_n_src] * output_n_obj]
     u = 1.0

@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from functools import cached_property
 
 import torch
@@ -26,6 +27,9 @@ class UncleModel(torch.nn.Module):
 
     Parameters
     ----------
+    d_input : int
+        Number of input dimensions, at least two (first parameters are flux and
+        err).
     d_output : int
         Number of output parameters, 1 for u, 2 for [u, l].
     """
@@ -38,9 +42,12 @@ class UncleModel(torch.nn.Module):
     norm_err_lgmin = -1.0
     norm_err_lgmax = 4.0
 
-    def __init__(self, *, d_output: int) -> None:
+    def __init__(self, *, d_input: int, d_output: int) -> None:
         super().__init__()
 
+        if d_input < 2:
+            raise ValueError("d_input must be >= 2")
+        self.d_input = d_input
         if d_output not in {1, 2}:
             raise ValueError("d_output must be 1 (for u) or 2 (for u and s)")
         self.d_output = d_output
@@ -48,10 +55,12 @@ class UncleModel(torch.nn.Module):
 
     @cached_property
     def norm_flux_scale(self) -> torch.Tensor:
+        """Scale factor for flux normalization."""
         return torch.tensor(mag2flux(self.norm_flux_scale_mag))
 
     @cached_property
     def norm_flux_amplitude(self) -> torch.Tensor:
+        """Amplitude factor for flux normalization."""
         norm_flux_max = torch.tensor(mag2flux(self.norm_flux_max_mag))
         return 1.0 / torch.arcsinh(norm_flux_max / self.norm_flux_scale)
 
@@ -61,6 +70,7 @@ class UncleModel(torch.nn.Module):
 
     @cached_property
     def norm_err_lgrange(self) -> torch.Tensor:
+        """Min-max range for decimal logarithm of error, for normalization."""
         return torch.tensor(self.norm_err_lgmax - self.norm_err_lgmin)
 
     def norm_err(self, err: torch.Tensor) -> torch.Tensor:
@@ -69,7 +79,8 @@ class UncleModel(torch.nn.Module):
         return (lg_err - self.norm_err_lgmin) / self.norm_flux_scale
 
     def norm_inputs(self, x: torch.Tensor) -> torch.Tensor:
-        """Normalizes inputs in place"""
+        """Normalizes batch"""
+        x = x.clone()
         x[..., 0] = self.norm_flux(x[..., 0])
         x[..., 1] = self.norm_err(x[..., 1])
         return x
@@ -85,45 +96,42 @@ class UncleModel(torch.nn.Module):
         return output
 
 
-# class MLPModel(UncleModel):
-#     """Multi-layer Perceptron (MLP) model for the Uncle function
-#
-#     Parameters
-#     ----------
-#     d_input : int
-#         Number of input parameters, e.g. length of theta
-#     d_middle : list of int
-#         Size of hidden module, e.g. [64, 32, 16]
-#     d_output : int
-#         Number of output parameters, 1 for u, 2 for [u, l].
-#     dropout : float | None
-#         Dropout probability, do not use dropout layer if None.
-#     rngs : flax.nnx.Rangs
-#         Random number generator for parameter initialization.
-#     """
-#
-#     def __init__(
-#         self,
-#         *,
-#         d_input: int,
-#         d_middle: Sequence[int] = (300, 300, 400),
-#         d_output: int = 1,
-#         dropout: None | float = None,
-#         rngs: nnx.Rngs,
-#     ):
-#         super().__init__(d_input=d_input, d_output=d_output, rngs=rngs)
-#         self.d_middle = list(d_middle)
-#         self.dropout = dropout
-#
-#         layers = []
-#         dims = [self.d_input] + self.d_middle + [self.d_output]
-#         for i, (d1, d2) in enumerate(zip(dims[:-1], dims[1:], strict=False)):
-#             layers.append(nnx.Linear(d1, d2, rngs=self.rngs, kernel_init=nnx.initializers.normal()))
-#             if i < len(dims) - 2:  # not the last layer
-#                 layers.append(nnx.relu)
-#                 if self.dropout is not None:
-#                     layers.append(nnx.Dropout(self.dropout, rngs=self.rngs))
-#         self.module = nnx.Sequential(*layers)
+class MLPModel(UncleModel):
+    """Multi-layer Perceptron (MLP) model for the Uncle function
+
+    Parameters
+    ----------
+    d_input : int
+        Number of input parameters, e.g. length of theta
+    d_middle : list of int
+        Size of hidden module, e.g. [64, 32, 16]
+    d_output : int
+        Number of output parameters, 1 for u, 2 for [u, l].
+    dropout : float | None
+        Dropout probability, do not use dropout layer if None.
+    """
+
+    def __init__(
+        self,
+        *,
+        d_input: int,
+        d_middle: Sequence[int] = (300, 300, 400),
+        d_output: int = 1,
+        dropout: None | float = None,
+    ):
+        super().__init__(d_input=d_input, d_output=d_output)
+        self.d_middle = list(d_middle)
+        self.dropout = dropout
+
+        layers = []
+        dims = [self.d_input] + self.d_middle + [self.d_output]
+        for i, (d1, d2) in enumerate(zip(dims[:-1], dims[1:], strict=False)):
+            layers.append(torch.nn.Linear(d1, d2))
+            if i < len(dims) - 2:  # not the last layer
+                layers.append(torch.nn.ReLU())
+                if self.dropout is not None:
+                    layers.append(torch.nn.Dropout(self.dropout))
+        self.module = torch.nn.Sequential(*layers)
 
 
 class LinearModel(UncleModel):
@@ -131,12 +139,35 @@ class LinearModel(UncleModel):
 
     Parameters
     ----------
+    d_input : int
+        Number of input parameters, at least two.
     d_output : int
         Number of output parameters, 1 for u, 2 for [u, l].
     """
 
     def __init__(self, d_input: int, d_output: int) -> None:
-        super().__init__(d_output=d_output)
+        super().__init__(d_input=d_input, d_output=d_output)
 
-        self.d_input = d_input
         self.module = torch.nn.Linear(self.d_input, self.d_output, bias=True)
+
+
+class ConstantModel(UncleModel):
+    """Uncle function returns constant
+
+    Parameters
+    ----------
+    d_input : int
+        Number of input parameters, at least two.
+    d_output : int
+        Number of output parameters, 1 for u, 2 for [u, l].
+    """
+
+    def __init__(self, d_input: int, d_output: int) -> None:
+        super().__init__(d_input=d_input, d_output=d_output)
+
+        self.vector = torch.nn.Parameter(torch.zeros(self.d_output))
+
+    def module(self, x: torch.Tensor) -> torch.Tensor:
+        """Compute the output of the model"""
+        shape = x.shape[:-1]
+        return self.vector.repeat(*shape, 1)

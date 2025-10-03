@@ -8,7 +8,7 @@ import torch
 from hats import HealpixPixel
 from lsdb import Catalog
 from nested_pandas import NestedFrame
-from torch.utils.data import IterableDataset, DataLoader
+from torch.utils.data import DataLoader, IterableDataset
 
 from uncle_val.datasets.lsdb_generator import LSDBDataGenerator
 
@@ -162,6 +162,7 @@ class LSDBIterableDataset(IterableDataset):
     --------
     `nested_series_data_generator`, `LSDBDataGenerator`
     """
+
     def __init__(
         self,
         catalog: Catalog,
@@ -211,18 +212,18 @@ class LSDBIterableDataset(IterableDataset):
 
 
 def lsdb_data_loader(
-        catalog: Catalog,
-        *,
-        lc_col: str = "lc",
-        columns: list[str] | None,
-        drop_columns: list[str] | None = None,
-        client: dask.distributed.Client | None,
-        batch_lc: int,
-        n_src: int,
-        partitions_per_chunk: int | None,
-        seed: int,
-        pin_memory: bool = False,
-        pin_memory_device: str = '',
+    catalog: Catalog,
+    *,
+    lc_col: str = "lc",
+    columns: list[str] | None,
+    drop_columns: list[str] | None = None,
+    client: dask.distributed.Client | None,
+    batch_lc: int,
+    n_src: int,
+    partitions_per_chunk: int | None,
+    seed: int,
+    pin_memory: bool = False,
+    pin_memory_device: str = "",
 ) -> DataLoader:
     """Make a torch DataLoader object from an LSDB catalog.
 

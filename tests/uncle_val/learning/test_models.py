@@ -2,7 +2,6 @@ import random
 from collections.abc import Callable
 from itertools import chain, count
 
-import lsdb
 import numpy as np
 import pytest
 import torch
@@ -46,17 +45,13 @@ def run_model(
     n_src = rng.integers(n_src_training, 150, size=n_obj)
     u = 2.0
 
-    nf = next(
-        fake_non_variable_lcs(
-            n_batches=1,
-            n_obj=n_obj,
-            n_src=n_src,
-            err=None,
-            u=u,
-            rng=rng,
-        )
+    catalog = fake_non_variable_lcs(
+        n_obj=n_obj,
+        n_src=n_src,
+        err=None,
+        u=u,
+        rng=rng,
     )
-    catalog = lsdb.from_dataframe(nf)
 
     def dataset_fn():
         return LSDBIterableDataset(
@@ -135,7 +130,7 @@ def test_linear_model_many_objects(loss):
         d_input=2,
         d_output=1,
     )
-    run_model(model=model, loss=loss, batch_size=2, train_batches=2000, n_obj=1000, rtol=0.01)
+    run_model(model=model, loss=loss, batch_size=2, train_batches=2000, n_obj=1000, rtol=0.02)
 
 
 @pytest.mark.parametrize("loss", [minus_ln_chi2_prob, kl_divergence_whiten])

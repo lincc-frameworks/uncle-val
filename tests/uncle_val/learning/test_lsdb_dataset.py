@@ -1,4 +1,3 @@
-import lsdb
 import numpy as np
 import pandas as pd
 import pytest
@@ -15,20 +14,13 @@ def generate_fake_catalog(output_n_obj, output_n_src, rng):
     input_n_src = np.r_[[output_n_src // 2] * (input_n_obj - output_n_obj), [output_n_src] * output_n_obj]
     u = 1.0
 
-    input_nf = next(
-        fake_non_variable_lcs(
-            n_batches=1,
-            n_obj=input_n_obj,
-            n_src=input_n_src,
-            err=None,
-            u=u,
-            rng=rng,
-        )
-    )
-    input_nf["ra"] = np.linspace(0.0, 360.0, input_n_obj)
-    input_nf["dec"] = np.linspace(0.0, 90.0, input_n_obj)
-    del input_nf["id"]
-    catalog = lsdb.from_dataframe(input_nf)
+    catalog = fake_non_variable_lcs(
+        n_obj=input_n_obj,
+        n_src=input_n_src,
+        err=None,
+        u=u,
+        rng=rng,
+    ).map_partitions(lambda df: df.drop(columns=["id"]))
     return catalog
 
 

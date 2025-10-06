@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 from functools import cached_property
+from pathlib import Path
 
 import torch
 
@@ -80,10 +81,11 @@ class UncleModel(torch.nn.Module):
 
     def norm_inputs(self, x: torch.Tensor) -> torch.Tensor:
         """Normalizes batch"""
-        x = x.clone()
-        x[..., 0] = self.norm_flux(x[..., 0])
-        x[..., 1] = self.norm_err(x[..., 1])
-        return x
+        normed = torch.empty_like(x)
+        normed[..., 0] = self.norm_flux(x[..., 0])
+        normed[..., 1] = self.norm_err(x[..., 1])
+        normed[..., 2:] = x[..., 2:]
+        return normed
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Compute the output of the model"""
@@ -94,6 +96,27 @@ class UncleModel(torch.nn.Module):
         if self.outputs_s:
             output[..., 1] = torch.expm1(output[..., 1])
         return output
+
+    def save_onnx(self, path: Path | str) -> None:
+        """Save the model to an ONNX file.
+
+        Parameters
+        ----------
+        path : str or Path
+            Path to save model.
+        """
+        if isinstance(path, str):
+            path = Path(path)
+
+        torch.onnx.export(
+            self,
+            torch.ones(self.d_input),
+            path,
+            input_names=["input"],
+            output_names=["output"],
+            dynamic_shapes={"x": {0: torch.export.Dim("batch_size", min=1)}},
+            dynamo=True,
+        )
 
 
 class MLPModel(UncleModel):

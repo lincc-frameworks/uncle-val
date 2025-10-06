@@ -18,15 +18,14 @@ dynamic = ["version"]
 requires-python = ">=3.11"
 dependencies = [
     "dask[distributed]",  # version from lsdb
-    "flax>=0.11",
-    "jax",  # version from flax
     "hats",  # version from lsdb
     "lsdb>=0.6.5,<0.7",
     "nested-pandas",  # version from lsdb
     "numba>=0.62.1",
     "numpy>=2",
-    "optax>=0.2.6",
+    "onnxscript>=0.5.3",
     "scipy>=1",
+    "torch>=2.8.0,<3",
     "tqdm>=4",
 ]
 
@@ -36,12 +35,12 @@ dependencies = [
 # On a mac, install optional dependencies with `pip install '.[dev]'` (include the single quotes)
 [project.optional-dependencies]
 dev = [
+    "jax",  # Used to test whitening functions
     "jupyter", # Clears output from Jupyter notebooks
     "pre-commit", # Used to run checks before finalizing a git commit
     "pytest",
     "pytest-cov", # Used to report total code coverage
     "ruff", # Used for static linting of files
-    "torch", # Used to test whitening functions
 ]
 
 [build-system]

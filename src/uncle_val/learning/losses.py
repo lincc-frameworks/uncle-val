@@ -1,54 +1,45 @@
-import jax
-from jax import numpy as jnp
-from jax.scipy import stats
+from functools import partial
 
-from uncle_val.learning.models import UncleModel
+import torch
+from torch import Tensor
+from torch.distributions.chi2 import Chi2
+
 from uncle_val.whitening import whiten_data
 
 
-def _residuals_lc(model: UncleModel, theta: jnp.ndarray, flux: jnp.ndarray, err: jnp.ndarray) -> jnp.ndarray:
-    """Light curve residuals
+def _residuals_lc(flux: torch.Tensor, err: torch.Tensor) -> torch.Tensor:
+    """Residuals for a single light curve
 
-    residuals = (flux * (1 + s) - avg_flux) / (u * err),
-    avg_flux = sum(flux / u^2 / err^2) / sum(1 / u^2 / err^2)
+    residuals = (flux - avg_flux) / err,
+    avg_flux = sum(flux / err^2) / sum(1 / err^2)
 
     Parameters
     ----------
-    model : UncleModel
-        Model to compute loss for, input dimensions is d_input
-    theta : jnp.ndarray
-        Parameter vector, (n_src, d_input)
-    flux : jnp.ndarray
+    flux : torch.Tensor
         Flux vector, (n_src,)
-    err : jnp.ndarray
+    err : torch.Tensor
         Error vector, (n_src,)
 
     Returns
     -------
-    jnp.ndarray
-        Residual vector, (n_src,)
+    torch.Tensor
+        Residuals vector, (n_src,)
     """
-    u, s = model.corrections(theta)
-    corrected_flux = flux * (1.0 + s)
-    corrected_err = u * err
+    weights = 1.0 / torch.square(err)
+    avg_flux = torch.sum(weights * flux) / torch.sum(weights)
 
-    avg_flux = jnp.average(corrected_flux, weights=corrected_err**-2)
-    residuals = (corrected_flux - avg_flux) / corrected_err
+    residuals = (flux - avg_flux) / err
     return residuals
 
 
-def _chi2_lc(model: UncleModel, theta: jnp.ndarray, flux: jnp.ndarray, err: jnp.ndarray) -> jnp.ndarray:
+def _chi2_lc(flux: torch.Tensor, err: torch.Tensor) -> torch.Tensor:
     """chi2 for a single light curve
 
     Parameters
     ----------
-    model : UncleModel
-        Model to compute loss for, input dimensions is d_input
-    theta : jnp.ndarray
-        Parameter vector, (n_src, d_input)
-    flux : jnp.ndarray
+    flux : torch.Tensor
         Flux vector, (n_src,)
-    err : jnp.ndarray
+    err : torch.Tensor
         Error vector, (n_src,)
 
     Returns
@@ -56,101 +47,62 @@ def _chi2_lc(model: UncleModel, theta: jnp.ndarray, flux: jnp.ndarray, err: jnp.
     jnp.ndarray, of shape ()
         chi2 value
     """
-    residuals = _residuals_lc(model, theta, flux, err)
-    chi2 = jnp.sum(jnp.square(residuals))
+    residuals = _residuals_lc(flux, err)
+    chi2 = torch.sum(torch.square(residuals))
     return chi2
 
 
-def minus_ln_chi2_prob(
-    model: UncleModel, theta: jnp.ndarray, flux: jnp.ndarray, err: jnp.ndarray
-) -> jnp.ndarray:
+def minus_ln_chi2_prob(flux: torch.Tensor, err: torch.Tensor) -> torch.Tensor:
     """-ln(prob(chi2)) for chi2 computed for given light curves and model.
 
     Parameters
     ----------
-    model : UncleModel
-        Model to compute loss for, input dimensions is d_input
-    theta : jnp.ndarray
-        Parameter vector, (n_batch, n_src, d_input)
-    flux : jnp.ndarray
-        Flux vector, (n_batch, n_src,)
-    err : jnp.ndarray
-        Error vector, (n_batch, n_src,)
+    flux : torch.Tensor
+        Corrected flux vector, (n_batch, n_src,)
+    err : torch.Tensor
+        Corrected error vector, (n_batch, n_src,)
 
     Returns
     -------
-    jnp.ndarray, of shape ()
+    torch.Tensor, of shape ()
         Loss value
     """
-    chi2_func = jax.vmap(_chi2_lc, in_axes=(None, 0, 0, 0), out_axes=0)
-    chi2_batch = chi2_func(model, theta, flux, err)
-    chi2 = jnp.sum(chi2_batch)
+    chi2_func = torch.vmap(_chi2_lc)
+    chi2_batch = chi2_func(flux, err)
+    chi2 = torch.sum(chi2_batch)
 
     # "compile-time" values
-    n_light_curves = jnp.prod(jnp.asarray(flux.shape[:-1]))
-    n_obs_total = jnp.prod(jnp.asarray(flux.shape))
+    n_light_curves = torch.prod(torch.tensor(flux.shape[:-1]))
+    n_obs_total = torch.prod(torch.tensor(flux.shape))
     degrees_of_freedom = n_obs_total - n_light_curves
+    distr = Chi2(degrees_of_freedom)
 
-    lnprob = stats.chi2.logpdf(chi2, df=degrees_of_freedom)
+    lnprob = distr.log_prob(chi2)
     return -lnprob
 
 
-def _whiten_light_curve(
-    model: UncleModel, theta: jnp.ndarray, flux: jnp.ndarray, err: jnp.ndarray
-) -> jnp.ndarray:
-    """Whitening the light curve with the given model.
-
-    Parameters
-    ----------
-    model : UncleModel
-        Model to compute loss for, input dimensions is d_input
-    theta : jnp.ndarray
-        Parameter vector, (n_src, d_input)
-    flux : jnp.ndarray
-        Flux vector, (n_src,)
-    err : jnp.ndarray
-        Error vector, (n_src,)
-
-    Returns
-    -------
-    jnp.ndarray, (n_src,)
-        Whitened light curve vector
-    """
-    u, s = model.corrections(theta)
-    corrected_flux = flux * (1.0 + s)
-    corrected_err = u * err
-    z = whiten_data(corrected_flux, corrected_err**2, np=jnp)
-    return z
-
-
-def kl_divergence_whiten(
-    model: UncleModel, theta: jnp.ndarray, flux: jnp.ndarray, err: jnp.ndarray
-) -> jnp.ndarray:
+def kl_divergence_whiten(flux: Tensor, err: Tensor) -> Tensor:
     """KL(N(μ, σ²)|N(0,1)) where μ and σ are for the whiten light curves
 
     KL(N(μ, σ²)|N(0,1)) = 1/2 [μ² + σ² - ln σ² - 1]
 
     Parameters
     ----------
-    model : UncleModel
-        Model to compute loss for, input dimensions is d_input
-    theta : jnp.ndarray
-        Parameter vector, (n_batch, n_src, d_input)
-    flux : jnp.ndarray
-        Flux vector, (n_batch, n_src,)
+    flux : torch.Tensor
+        Corrected flux vector, (n_batch, n_src,)
     err : jnp.ndarray
-        Error vector, (n_batch, n_src,)
+        Corrected error vector, (n_batch, n_src,)
 
     Returns
     -------
-    jnp.ndarray
+    torch.Tensor, of shape ()
         Loss value
     """
-    whiten_func = jax.vmap(_whiten_light_curve, in_axes=(None, 0, 0, 0), out_axes=0)
-    z = whiten_func(model, theta, flux, err)
-    mu_z = jnp.mean(z)
+    whiten_func = torch.vmap(partial(whiten_data, np=torch))
+    z = whiten_func(flux, err**2)
+    mu_z = torch.mean(z)
     # ddof is always 1 (not number of light curves), because "target" mu=0 for all whiten data points
-    var_z = jnp.var(z, ddof=1)
+    var_z = torch.var(z, correction=1)
     # https://en.wikipedia.org/wiki/Kullback–Leibler_divergence#Multivariate_normal_distributions
-    kl = 0.5 * (mu_z**2 + var_z - jnp.log(var_z) - 1.0)
+    kl = 0.5 * (mu_z**2 + var_z - torch.log(var_z) - 1.0)
     return kl

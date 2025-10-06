@@ -1,5 +1,6 @@
 from collections.abc import Callable
 
+import lsdb
 import numpy as np
 from nested_pandas import NestedFrame
 from numpy._typing import NDArray
@@ -8,8 +9,7 @@ from scipy import stats
 
 def _fake_non_variable_lcs(
     *,
-    n_obj: int,
-    n_src: NDArray,
+    n_src: NDArray[int],
     err: Callable[[float, np.random.Generator], float],
     u: Callable[[float, float], float],
     rng: np.random.Generator,
@@ -33,20 +33,21 @@ def _fake_non_variable_lcs(
         append_columns=True,
     )
     nf["id"] = np.arange(len(nf))
+    nf["ra"] = np.degrees(rng.uniform(low=0.0, high=360.0, size=len(nf)))
+    nf["dec"] = np.degrees(np.arcsin(rng.uniform(-1.0, 1.0, size=len(nf))))
 
     return nf
 
 
 def fake_non_variable_lcs(
     *,
-    n_batches: int = 1,
     n_obj: int = 1000,
-    n_src: int | NDArray = 100,
+    n_src: int | NDArray[int] = 100,
     err: None | Callable[[float, np.random.Generator], float] = None,
     u: float | Callable[[float, float], float] = 1.0,
     rng: np.random.Generator,
-):
-    """Iterates over `NestedFrame`s of non-variable light curves
+) -> lsdb.Catalog:
+    """LSDB Catalog of non-variable light curves
 
     Parameters
     ----------
@@ -91,5 +92,7 @@ def fake_non_variable_lcs(
 
     rng = np.random.default_rng(rng)
 
-    for _ in range(n_batches):
-        yield _fake_non_variable_lcs(n_obj=n_obj, n_src=n_src, err=err_func, u=u_func, rng=rng)
+    nf = _fake_non_variable_lcs(n_src=n_src, err=err_func, u=u_func, rng=rng)
+
+    catalog = lsdb.from_dataframe(nf)
+    return catalog

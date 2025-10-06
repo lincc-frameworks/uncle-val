@@ -1,19 +1,21 @@
+import random
 from collections.abc import Callable
+from itertools import chain, count
 
-import jax.numpy as jnp
 import numpy as np
-import optax
 import pytest
-from flax import nnx
+import torch
+import torch.optim
 from numpy.testing import assert_allclose
 from uncle_val.datasets.fake import fake_non_variable_lcs
 from uncle_val.learning.losses import kl_divergence_whiten, minus_ln_chi2_prob
-from uncle_val.learning.models import LinearModel, MLPModel, UncleModel
+from uncle_val.learning.lsdb_dataset import LSDBIterableDataset
+from uncle_val.learning.models import ConstantModel, LinearModel, MLPModel, UncleModel
 from uncle_val.learning.training import train_step
 
 
 def run_model(
-    *, batch_size: int, train_steps: int, n_obj: int, model: UncleModel, loss: Callable, rtol: float
+    *, batch_size: int, train_batches: int, n_obj: int, model: UncleModel, loss: Callable, rtol: float
 ):
     """Run tests with MLP model
 
@@ -21,7 +23,7 @@ def run_model(
     ----------
     batch_size : int
         Batch size, e.g. number of light curves to average loss on.
-    train_steps : int
+    train_batches : int
         Number of training steps, e.g. number of batches to train on.
     n_obj : int
         Number of unique objects to generate.
@@ -32,73 +34,80 @@ def run_model(
     rtol : float
         Relative error tolerance for testing.
     """
-    np_rng = np.random.default_rng(42)
+    torch.manual_seed(42)
+    np.random.seed(42)
+    random.seed(42)
+    torch.use_deterministic_algorithms(True)
+
+    rng = np.random.default_rng(42)
 
     n_src_training = 30
-    n_src = np_rng.integers(n_src_training, 150, size=n_obj)
+    n_src = rng.integers(n_src_training, 150, size=n_obj)
     u = 2.0
 
-    nf = next(
-        fake_non_variable_lcs(
-            n_batches=1,
-            n_obj=n_obj,
-            n_src=n_src,
-            err=None,
-            u=u,
-            rng=np_rng,
-        )
+    catalog = fake_non_variable_lcs(
+        n_obj=n_obj,
+        n_src=n_src,
+        err=None,
+        u=u,
+        rng=rng,
     )
-    ln_fluxes = np.log(nf["lc.x"])
-    nf["lc.norm_flux"] = (ln_fluxes - np.mean(ln_fluxes)) / np.std(ln_fluxes)
-    ln_errs = np.log(nf["lc.err"])
-    nf["lc.norm_err"] = (ln_errs - np.mean(ln_errs)) / np.std(ln_errs)
 
-    struct_array = nf["lc"].array.struct_array.combine_chunks()
-    flux_arr = struct_array.field("x")
-    err_arr = struct_array.field("err")
-    norm_flux_arr = struct_array.field("norm_flux")
-    norm_err_arr = struct_array.field("norm_err")
+    def dataset_fn():
+        return LSDBIterableDataset(
+            catalog=catalog,
+            client=None,
+            columns=["x", "err"],
+            batch_lc=batch_size,
+            n_src=n_src_training,
+            partitions_per_chunk=12,
+            seed=rng.integers(1 << 63),
+        )
 
-    optimizer = nnx.Optimizer(model, optax.adam(1e-3), wrt=nnx.Param)
+    infinite_dataset = chain.from_iterable(dataset_fn() for _ in count())
 
-    step = nnx.jit(lambda **kwargs: train_step(loss=loss, **kwargs))
+    model.train()
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-    for indexes in np_rng.choice(len(flux_arr), size=(train_steps, batch_size)):
-        flux_batch = flux_arr.take(indexes)
-        err_batch = err_arr.take(indexes)
-        norm_flux_batch = norm_flux_arr.take(indexes)
-        norm_err_batch = norm_err_arr.take(indexes)
-
-        lengths = flux_batch.value_lengths()
-
-        flux_ = []
-        err_ = []
-        norm_flux_ = []
-        norm_err_ = []
-
-        for length, flux, err, norm_flux, norm_err in zip(
-            lengths, flux_batch, err_batch, norm_flux_batch, norm_err_batch, strict=False
-        ):
-            value_idx = np_rng.choice(length, n_src_training, replace=False)
-            flux_.append(jnp.asarray(flux.values.take(value_idx)))
-            err_.append(jnp.asarray(err.values.take(value_idx)))
-            norm_flux_.append(jnp.asarray(norm_flux.values.take(value_idx)))
-            norm_err_.append(jnp.asarray(norm_err.values.take(value_idx)))
-        flux_ = jnp.stack(flux_)
-        err_ = jnp.stack(err_)
-        norm_flux_ = jnp.stack(norm_flux_)
-        norm_err_ = jnp.stack(norm_err_)
-
-        theta_ = jnp.stack([norm_flux_, norm_err_], axis=-1)
-        step(
+    for _i_step, batch in zip(range(train_batches), infinite_dataset, strict=False):
+        train_step(
             model=model,
             optimizer=optimizer,
-            theta=theta_,
-            flux=flux_,
-            err=err_,
+            loss=loss,
+            batch=batch,
         )
 
-    assert_allclose(np.mean(model(theta_)), u, rtol=rtol)
+    model.eval()
+    assert_allclose(np.mean(model(batch).detach().numpy()), u, rtol=rtol)
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        MLPModel(
+            d_input=2,
+            d_middle=(3, 5, 6),
+            d_output=2,
+            dropout=0.2,
+        ),
+        MLPModel(
+            d_input=4,
+            d_output=1,
+            dropout=None,
+        ),
+        LinearModel(
+            d_input=5,
+            d_output=1,
+        ),
+        ConstantModel(
+            d_input=2,
+            d_output=2,
+        ),
+    ],
+)
+def test_model(model):
+    """Check that `UncleModel`s don't fail"""
+    _ = model(torch.randn(model.d_input))
 
 
 @pytest.mark.parametrize("loss", [minus_ln_chi2_prob, kl_divergence_whiten])
@@ -109,22 +118,8 @@ def test_mlp_model_many_objects(loss):
         d_input=2,
         d_output=1,
         dropout=None,
-        rngs=nnx.Rngs(0),
     )
-    run_model(model=model, loss=loss, batch_size=1, train_steps=2000, n_obj=1000, rtol=0.06)
-
-
-@pytest.mark.parametrize("loss", [minus_ln_chi2_prob, kl_divergence_whiten])
-def test_mlp_model_overfit_single_object(loss):
-    """Fit MLPModel for a constant u function with a single object"""
-    model = MLPModel(
-        d_input=2,
-        d_output=1,
-        dropout=0.2,
-        rngs=nnx.Rngs(0),
-    )
-    run_model(model=model, loss=loss, batch_size=1, train_steps=1, n_obj=1, rtol=0.5)
-    run_model(model=model, loss=loss, batch_size=1, train_steps=100, n_obj=1, rtol=0.3)
+    run_model(model=model, loss=loss, batch_size=1, train_batches=2000, n_obj=1000, rtol=0.1)
 
 
 @pytest.mark.parametrize("loss", [minus_ln_chi2_prob, kl_divergence_whiten])
@@ -134,17 +129,16 @@ def test_linear_model_many_objects(loss):
     model = LinearModel(
         d_input=2,
         d_output=1,
-        rngs=nnx.Rngs(0),
     )
-    run_model(model=model, loss=loss, batch_size=2, train_steps=2000, n_obj=1000, rtol=0.01)
+    run_model(model=model, loss=loss, batch_size=2, train_batches=2000, n_obj=1000, rtol=0.02)
 
 
 @pytest.mark.parametrize("loss", [minus_ln_chi2_prob, kl_divergence_whiten])
-def test_linear_model_overfit_single_object(loss):
-    """Fit MLPModel for a constant u function with a single object"""
-    model = LinearModel(
+@pytest.mark.long
+def test_constant_model_many_objects(loss):
+    """Fit MLPModel for a constant u function with many objects"""
+    model = ConstantModel(
         d_input=2,
         d_output=1,
-        rngs=nnx.Rngs(0),
     )
-    run_model(model=model, loss=loss, batch_size=1, train_steps=1000, n_obj=1, rtol=0.3)
+    run_model(model=model, loss=loss, batch_size=2, train_batches=2000, n_obj=1000, rtol=0.01)

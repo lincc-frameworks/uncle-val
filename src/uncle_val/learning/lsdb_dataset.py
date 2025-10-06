@@ -1,11 +1,14 @@
 from collections.abc import Generator
+from itertools import chain
 
 import dask
 import numpy as np
 import pandas as pd
+import torch
 from hats import HealpixPixel
 from lsdb import Catalog
 from nested_pandas import NestedFrame
+from torch.utils.data import DataLoader, IterableDataset
 
 from uncle_val.datasets.lsdb_generator import LSDBDataGenerator
 
@@ -65,7 +68,7 @@ def _process_partition(
     return fixed_length_series
 
 
-def nested_series_data_generator(
+def lsdb_nested_series_data_generator(
     catalog: Catalog,
     *,
     lc_col: str = "lc",
@@ -116,3 +119,171 @@ def nested_series_data_generator(
         seed=seed,
     )
     yield from lsdb_generator
+
+
+class LSDBIterableDataset(IterableDataset):
+    """Iterable dataset fetching data through LSDB, use num_workers=0
+
+    Torch iterable dataset fetching data using LSDB. When used with
+    a torch DataLoader, num_workers=0 (default) must be used.
+
+    It yields `torch.Tensor` objects of shape (batch_lc, n_src, n_features).
+
+    Parameters
+    ----------
+    catalog : Catalog
+        LSDB catalog, should have the only nested column, `lc_col`.
+    lc_col : str, optional
+        LSDB light curve column name, default is "lc".
+    columns : list of str or None, optional
+        List of column names (both base and nested into `lc_col`) to use.
+        If None, all columns will be used, and it is assumed "x" and "err"
+        are there. Note, that all columns should be castable to float32.
+    drop_columns : list of str or None, optional
+        List of column names (both base and nested into `lc_col`) to drop,
+        if None nothing will be dropped.
+    client : dask.distributed.Client or None, optional
+        Dask client to use, default is None, which would not lock on each next
+        value. If Dask client is given, the data would be fetched on the
+        background.
+    batch_lc : int
+        Number of batches to yield.
+    n_src : int
+        Number of random observations per light curve.
+    partitions_per_chunk : int or None
+        Number of `catalog` partitions per time, if None it is derived
+        from the number of dask workers associated with `Client` (one if
+        no workers or None `Client`).
+        This changes the randomness.
+    seed : int
+        Random seed to use for shuffling.
+
+    See Also
+    --------
+    `nested_series_data_generator`, `LSDBDataGenerator`
+    """
+
+    def __init__(
+        self,
+        catalog: Catalog,
+        *,
+        lc_col: str = "lc",
+        columns: list[str] | None,
+        drop_columns: list[str] | None = None,
+        client: dask.distributed.Client | None,
+        batch_lc: int,
+        n_src: int,
+        partitions_per_chunk: int | None,
+        seed: int,
+    ):
+        self.nested_series_gen = lsdb_nested_series_data_generator(
+            catalog=catalog,
+            lc_col=lc_col,
+            client=client,
+            partitions_per_chunk=partitions_per_chunk,
+            n_src=n_src,
+            seed=seed,
+        )
+        self.batch_lc = batch_lc
+        self.n_src = n_src
+        self.current_nested_series = next(self.nested_series_gen)
+
+        if columns is None:
+            orig_columns = self.current_nested_series.dtype.field_names
+            self.columns = ["x", "err"] + [col for col in orig_columns if col not in {"x", "err"}]
+        else:
+            self.columns = columns
+        if drop_columns is not None:
+            if drop_columns is str:
+                drop_columns = [drop_columns]
+            drop_columns = set(drop_columns)
+            self.columns = [col for col in self.columns if col not in drop_columns]
+        self.n_columns = len(self.columns)
+
+    def __iter__(self) -> Generator[torch.Tensor, None, None]:
+        for nested_series in chain([self.current_nested_series], self.nested_series_gen):
+            self.current_nested_series = nested_series
+            for i in range(0, len(nested_series) - self.batch_lc, self.batch_lc):
+                batch_series = nested_series.iloc[i : i + self.batch_lc]
+                batch_flat_df = batch_series.nest.to_flat()[self.columns]
+                np_array_2d = batch_flat_df.to_numpy(dtype=np.float32)
+                np_array_3d = np_array_2d.reshape(self.batch_lc, self.n_src, self.n_columns)
+                yield torch.tensor(np_array_3d)
+
+
+def lsdb_data_loader(
+    catalog: Catalog,
+    *,
+    lc_col: str = "lc",
+    columns: list[str] | None,
+    drop_columns: list[str] | None = None,
+    client: dask.distributed.Client | None,
+    batch_lc: int,
+    n_src: int,
+    partitions_per_chunk: int | None,
+    seed: int,
+    pin_memory: bool = False,
+    pin_memory_device: str = "",
+) -> DataLoader:
+    """Make a torch DataLoader object from an LSDB catalog.
+
+    Iterable dataset fetching data through LSDB, use num_workers=0
+
+    Torch iterable dataset fetching data using LSDB. When used with
+    a torch DataLoader, num_workers=0 (default) must be used.
+
+    It yields a tuple of `torch.Tensor` objects of shape
+    (batch_lc, n_src, n_features), and a list of feature names.
+
+    Parameters
+    ----------
+    catalog : Catalog
+        LSDB catalog, should have the only nested column, `lc_col`.
+    lc_col : str, optional
+        LSDB light curve column name, default is "lc".
+    columns : list of str or None, optional
+        List of column names (both base and nested into `lc_col`) to use.
+        If None, all columns will be used, and it is assumed "x" and "err"
+        are there. Note, that all columns should be castable to float32.
+    drop_columns : list of str or None, optional
+        List of column names (both base and nested into `lc_col`) to drop,
+        if None nothing will be dropped.
+    client : dask.distributed.Client or None, optional
+        Dask client to use, default is None, which would not lock on each next
+        value. If Dask client is given, the data would be fetched on the
+        background.
+    batch_lc : int
+        Number of batches to yield.
+    n_src : int
+        Number of random observations per light curve.
+    partitions_per_chunk : int or None
+        Number of `catalog` partitions per time, if None it is derived
+        from the number of dask workers associated with `Client` (one if
+        no workers or None `Client`).
+        This changes the randomness.
+    seed : int
+        Random seed to use for shuffling.
+    pin_memory : bool, optional
+        Whether to pin memory, default is False.
+    pin_memory_device : str, optional
+        Device string to use for pin memory, passed to `DataLoader`.
+    """
+    dataset = LSDBIterableDataset(
+        catalog=catalog,
+        lc_col=lc_col,
+        columns=columns,
+        drop_columns=drop_columns,
+        client=client,
+        batch_lc=batch_lc,
+        n_src=n_src,
+        partitions_per_chunk=partitions_per_chunk,
+        seed=seed,
+    )
+    return DataLoader(
+        dataset=dataset,
+        batch_size=1,  # We batch in the dataset with batch_lc
+        shuffle=False,  # We shuffle in the dataset
+        num_workers=0,  # We use Dask workers already, no need to use parall processing with torch
+        pin_memory=pin_memory,
+        pin_memory_device=pin_memory_device,
+    )

@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Literal
 
@@ -6,6 +6,8 @@ import lsdb
 import numpy as np
 import pandas as pd
 from upath import UPath
+
+from uncle_val.variability_detectors import get_combined_variability_detector
 
 LSDB_BANDS = "ugrizy"
 
@@ -43,6 +45,7 @@ def _process_partition_single_band(
     flux_err_col,
     source_flag_cols,
     band,
+    var_detector,
 ):
     # Normalize column names
     df = _rename_columns(df, lc_col=lc_col, id_col=id_col, flux_col=flux_col, flux_err_col=flux_err_col)
@@ -57,6 +60,9 @@ def _process_partition_single_band(
 
     # Drop empty light curves
     df = df.dropna(subset=["lc"])
+
+    # Filter out variable light curves
+    df = _filter_variable_lcs(df, nested_flux_col="lc.x", nested_err_col="lc.err", var_detector=var_detector)
 
     return df
 
@@ -89,6 +95,13 @@ def _split_light_curves_by_band(
     return pd.concat(single_band_dfs)
 
 
+def _filter_variable_lcs(df, *, nested_flux_col, nested_err_col, var_detector):
+    if len(df) == 0:
+        return df
+    is_variable = df.reduce(var_detector, nested_flux_col, nested_err_col)[0]
+    return df[~is_variable]
+
+
 def _process_partition_multi_band(
     df,
     *,
@@ -98,6 +111,7 @@ def _process_partition_multi_band(
     flux_err_col,
     source_flag_cols,
     bands,
+    var_detector,
 ):
     df = _rename_columns(df, lc_col=lc_col, id_col=id_col, flux_col=flux_col, flux_err_col=flux_err_col)
 
@@ -105,9 +119,12 @@ def _process_partition_multi_band(
     df = _filter_bad_obs(df, lc_col="lc", flag_cols=source_flag_cols)
     df = df.dropna(subset=["lc"])
 
-    # Filter bands, and split light curves (rows) by band
+    # Filter bands and split light curves (rows) by band
     df = _split_light_curves_by_band(df, bands=bands, lc_col="lc")
     df = df.dropna(subset=["lc", "object_mag", "extendedness"])
+
+    # Filter out variable light curves
+    df = _filter_variable_lcs(df, nested_flux_col="lc.x", nested_err_col="lc.err", var_detector=var_detector)
 
     # Encode band names
     df = _one_hot_encode_band(df, dtype=bool)
@@ -199,6 +216,7 @@ def dp1_catalog_single_band(
     img: Literal["cal"] | Literal["diff"],
     phot: Literal["PSF"],
     mode: Literal["forced"],
+    variability_detectors: Sequence[Callable] | Literal["all"] = "all",
 ) -> lsdb.Catalog:
     """Rubin DP1 LSDB Catalog filtered for single-band DP1 sources
 
@@ -218,6 +236,10 @@ def dp1_catalog_single_band(
         Type of photometry, "PSF".
     mode : str
         Type of source coordinate mode, "forced".
+    variability_detectors : list of func(flux, err) -> bool or "all"
+        Which variability detectors are to pass to
+        `get_combined_variability_detector()`, default passing `None` which means
+        using all of them.
 
     Returns
     -------
@@ -233,6 +255,10 @@ def dp1_catalog_single_band(
         mode=mode,
     )
 
+    if variability_detectors == "all":
+        variability_detectors = None
+    var_detector = get_combined_variability_detector(variability_detectors)
+
     mapped_catalog = catalog.map_partitions(
         _process_partition_single_band,
         lc_col=col_names["source_col"],
@@ -241,6 +267,7 @@ def dp1_catalog_single_band(
         flux_col=col_names["flux_col"],
         flux_err_col=col_names["flux_err_col"],
         band=band,
+        var_detector=var_detector,
     )
     return mapped_catalog
 
@@ -253,6 +280,7 @@ def dp1_catalog_multi_band(
     img: Literal["cal"] | Literal["diff"],
     phot: Literal["PSF"],
     mode: Literal["forced"],
+    variability_detectors: Sequence[Callable] | Literal["all"] = "all",
 ):
     """Rubin DP1 LSDB catalog, bands are one-hot encoded.
 
@@ -289,6 +317,10 @@ def dp1_catalog_multi_band(
         Type of photometry, "PSF".
     mode : str
         Type of source coordinate mode, "forced".
+    variability_detectors : list of func(flux, err) -> bool or "all"
+        Which variability detectors are to pass to
+        `get_combined_variability_detector()`, default passing `None` which means
+        using all of them.
 
     Returns
     -------
@@ -309,6 +341,10 @@ def dp1_catalog_multi_band(
         mode=mode,
     )
 
+    if variability_detectors == "all":
+        variability_detectors = None
+    var_detector = get_combined_variability_detector(variability_detectors)
+
     mapped_catalog = catalog.map_partitions(
         _process_partition_multi_band,
         lc_col=col_names["source_col"],
@@ -317,5 +353,6 @@ def dp1_catalog_multi_band(
         flux_col=col_names["flux_col"],
         flux_err_col=col_names["flux_err_col"],
         bands=bands,
+        var_detector=var_detector,
     )
     return mapped_catalog

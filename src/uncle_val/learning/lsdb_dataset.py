@@ -331,19 +331,12 @@ def lsdb_data_loader(
     pin_memory_device : str, optional
         Device string to use for pin memory, passed to `DataLoader`.
     """
-    dataset = LSDBIterableDataset(
-        catalog=catalog,
-        lc_col=lc_col,
-        id_col=id_col,
-        columns=columns,
-        drop_columns=drop_columns,
-        client=client,
-        batch_lc=batch_lc,
-        n_src=n_src,
-        partitions_per_chunk=partitions_per_chunk,
-        hash_range=hash_range,
-        seed=seed,
-    )
+    kwargs = locals()
+    kwargs.pop("self")
+    kwargs.pop("pin_memory")
+    kwargs.pop("pin_memory_device")
+    dataset = LSDBIterableDataset(**kwargs)
+
     return DataLoader(
         dataset=dataset,
         batch_size=1,  # We batch in the dataset with batch_lc

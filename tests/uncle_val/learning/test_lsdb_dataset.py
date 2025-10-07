@@ -23,7 +23,7 @@ def generate_fake_catalog(output_n_obj, output_n_src, rng):
         err=None,
         u=u,
         rng=rng,
-    ).map_partitions(lambda df: df.drop(columns=["id"]))
+    )
     return catalog
 
 

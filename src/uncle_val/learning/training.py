@@ -34,6 +34,26 @@ def train_step(
     """
     optimizer.zero_grad()
 
+    loss_values_grads = evaluate_loss(
+        model=model,
+        loss=loss,
+        batch=batch,
+    )
+    loss_values_grads.backward()
+
+    optimizer.step()
+    loss_values = loss_values_grads.detach()
+
+    return loss_values
+
+
+def evaluate_loss(
+    *,
+    model: UncleModel,
+    loss: Callable[[Tensor, Tensor], Tensor],
+    batch: Tensor,
+):
+    """Evaluate and return loss"""
     flux, err = batch[..., 0], batch[..., 1]
 
     model_output = model(batch)
@@ -47,11 +67,6 @@ def train_step(
     else:
         corrected_flux = flux
 
-    loss_values_grads = loss(corrected_flux, corrected_err)
-    loss_values_grads.backward()
+    values = loss(corrected_flux, corrected_err)
 
-    optimizer.step()
-
-    loss_values = loss_values_grads.detach()
-
-    return loss_values
+    return values

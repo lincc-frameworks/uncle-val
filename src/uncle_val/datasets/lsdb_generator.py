@@ -38,9 +38,13 @@ class LSDBDataGenerator(Iterator[pd.Series | pd.DataFrame]):
         Dask client for distributed computation. None means running
         in a synced way with `dask.compute()` instead of asynced with
         `client.compute()`.
-    partitions_per_chunk : int or None
-        Number of partitions to yield, default is None, which makes it equal
-        to number of Dask workers being run with Dask client.
+    partitions_per_chunk : int
+        Number of partitions to yield. It will be clipped to the total number
+        of partitions.
+        This changes the randomness.
+    loop : bool
+        If `True` it runs infinitely selecting random partitions every time.
+        If `False` it runs once.
     seed : int
         Random seed to use for observation sampling.
 
@@ -55,52 +59,39 @@ class LSDBDataGenerator(Iterator[pd.Series | pd.DataFrame]):
         *,
         catalog: Catalog,
         client: Client | None,
-        partitions_per_chunk: int | None = None,
+        partitions_per_chunk: int,
+        loop: bool = False,
         seed: int,
     ) -> None:
+        self.catalog = catalog
         self.client = client
+        self.partitions_per_chunk = min(partitions_per_chunk, self.catalog.npartitions)
+        self.loop = loop
         self.seed = seed
-        self.partitions_per_chunk = self._get_partitions_per_chunk(partitions_per_chunk, client)
+
         self.rng = np.random.default_rng((1 << 32, seed))
 
-        self.catalog = catalog
-        self.partitions_left = self._shuffle_partitions(self.catalog, self.rng)
-        if len(self.partitions_left) == 0:
-            raise ValueError("Catalog must have at least one partition")
+        self.partitions_left = self.rng.permutation(self.catalog.npartitions)
         self._empty = False
 
         self.future = self._submit_next_partitions()
 
-    @staticmethod
-    def _shuffle_partitions(catalog: Catalog, rng: np.random.Generator) -> np.ndarray:
-        return rng.permutation(catalog.npartitions)
+    def _get_next_partitions(self) -> np.ndarray:
+        # Get a random subset of partitions when looping infinitely
+        if self.loop:
+            return self.rng.choice(self.partitions_left, self.partitions_per_chunk, replace=False)
 
-    @staticmethod
-    def _get_partitions_per_chunk(input_chunk_size, client) -> int:
-        """Number of chunk to yield, either given or number of Dask workers
-
-        Returns one if no chunk size is given and workers are available yet
-        (or no client is given).
-
-        Returns
-        -------
-        int
-            Number of partitions to yield.
-        """
-        if input_chunk_size is not None:
-            return input_chunk_size
-        if client is None:
-            return 1
-        n_workers = len(client.scheduler_info().get("workers", []))
-        n_workers = n_workers if n_workers > 0 else 1
-        return n_workers
-
-    def _submit_next_partitions(self) -> Future | _FakeFuture:
+        # Chomp a subset of partitions when running once through the data
         self.partitions_left, partitions = (
             self.partitions_left[: -self.partitions_per_chunk],
             self.partitions_left[-self.partitions_per_chunk :],
         )
+        return partitions
+
+    def _submit_next_partitions(self) -> Future | _FakeFuture:
+        partitions = self._get_next_partitions()
         sliced_catalog = self.catalog.partitions[partitions]
+
         futurable = sliced_catalog._ddf if hasattr(sliced_catalog, "_ddf") else sliced_catalog
 
         if self.client is None:

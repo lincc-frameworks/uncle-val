@@ -53,7 +53,7 @@ def run_model(
         rng=rng,
     )
 
-    def dataset_fn():
+    def train_dataset_fn():
         return LSDBIterableDataset(
             catalog=catalog,
             client=None,
@@ -61,15 +61,32 @@ def run_model(
             batch_lc=batch_size,
             n_src=n_src_training,
             partitions_per_chunk=12,
+            hash_range=(0.0, 0.5),
             seed=rng.integers(1 << 63),
         )
 
-    infinite_dataset = chain.from_iterable(dataset_fn() for _ in count())
+    infinite_train_dataset = chain.from_iterable(train_dataset_fn() for _ in count())
+
+    test_tensor = torch.concatenate(
+        [
+            chunk
+            for chunk in LSDBIterableDataset(
+                catalog=catalog,
+                client=None,
+                columns=["x", "err"],
+                batch_lc=batch_size,
+                n_src=n_src_training,
+                partitions_per_chunk=12,
+                hash_range=(0.5, 1.0),
+                seed=rng.integers(1 << 63),
+            )
+        ]
+    )
 
     model.train()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-    for _i_step, batch in zip(range(train_batches), infinite_dataset, strict=False):
+    for _i_step, batch in zip(range(train_batches), infinite_train_dataset, strict=False):
         train_step(
             model=model,
             optimizer=optimizer,
@@ -78,7 +95,7 @@ def run_model(
         )
 
     model.eval()
-    assert_allclose(np.mean(model(batch).detach().numpy()), u, rtol=rtol)
+    assert_allclose(np.mean(model(test_tensor).detach().numpy()), u, rtol=rtol)
 
 
 @pytest.mark.parametrize(
@@ -119,7 +136,7 @@ def test_mlp_model_many_objects(loss):
         d_output=1,
         dropout=None,
     )
-    run_model(model=model, loss=loss, batch_size=1, train_batches=2000, n_obj=1000, rtol=0.1)
+    run_model(model=model, loss=loss, batch_size=1, train_batches=2000, n_obj=1000, rtol=0.05)
 
 
 @pytest.mark.parametrize("loss", [minus_ln_chi2_prob, kl_divergence_whiten])

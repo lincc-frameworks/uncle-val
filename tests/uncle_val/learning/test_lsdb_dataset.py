@@ -5,11 +5,14 @@ import torch
 from dask.distributed import Client
 from numpy.testing import assert_array_equal
 from uncle_val.datasets.fake import fake_non_variable_lcs
-from uncle_val.learning.lsdb_dataset import LSDBIterableDataset, lsdb_nested_series_data_generator
+from uncle_val.learning.lsdb_dataset import (
+    lsdb_data_loader,
+    lsdb_nested_series_data_generator,
+)
 
 
 def generate_fake_catalog(output_n_obj, output_n_src, rng):
-    """Generate catalog of fake data for tests."""
+    """Generate a catalog of fake data for tests."""
     input_n_obj = output_n_obj * 2 + 123
     input_n_src = np.r_[[output_n_src // 2] * (input_n_obj - output_n_obj), [output_n_src] * output_n_obj]
     u = 1.0
@@ -20,7 +23,7 @@ def generate_fake_catalog(output_n_obj, output_n_src, rng):
         err=None,
         u=u,
         rng=rng,
-    ).map_partitions(lambda df: df.drop(columns=["id"]))
+    )
     return catalog
 
 
@@ -65,7 +68,7 @@ def test_lsdb_data_loader(client):
     output_n_src = 100
     catalog = generate_fake_catalog(output_n_obj, output_n_src, rng)
 
-    dataset = LSDBIterableDataset(
+    dataset = lsdb_data_loader(
         catalog=catalog,
         lc_col="lc",
         columns=["x", "err"],
@@ -83,4 +86,4 @@ def test_lsdb_data_loader(client):
 
     tensor = torch.concatenate(chunks)
     # We have just two features: x and err
-    assert tensor.shape == (output_n_obj // batches * batches, output_n_src, 2)
+    assert tensor.shape == (output_n_obj // batches, batches, output_n_src, 2)

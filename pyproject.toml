@@ -17,6 +17,7 @@ classifiers = [
 dynamic = ["version"]
 requires-python = ">=3.11"
 dependencies = [
+    "cityhash>=0.4.9",  # provides cityhash and farmhash
     "dask[distributed]",  # version from lsdb
     "hats",  # version from lsdb
     "lsdb>=0.6.5,<0.7",

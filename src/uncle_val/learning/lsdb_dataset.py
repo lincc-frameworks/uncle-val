@@ -239,6 +239,7 @@ class LSDBIterableDataset(IterableDataset):
         self.batch_lc = batch_lc
         self.n_src = n_src
         self.current_nested_series = next(self.nested_series_gen)
+        self.nested_series_leftovers = NestedSeries()
 
         if columns is None:
             orig_columns = self.current_nested_series.dtype.field_names
@@ -262,11 +263,18 @@ class LSDBIterableDataset(IterableDataset):
 
     def __iter__(self) -> Generator[torch.Tensor, None, None]:
         for nested_series in chain([self.current_nested_series], self.nested_series_gen):
+            if len(self.nested_series_leftovers) > 0:
+                nested_series = pd.concat([self.nested_series_leftovers, nested_series])
             self.current_nested_series = nested_series
-            for i in range(0, len(nested_series) - self.batch_lc, self.batch_lc):
-                batch_series = nested_series.iloc[i : i + self.batch_lc]
+            del nested_series
+
+            last_idx = len(self.current_nested_series) // self.batch_lc * self.batch_lc
+            for i in range(0, last_idx, self.batch_lc):
+                batch_series = self.current_nested_series.iloc[i : i + self.batch_lc]
                 tensor = self._nested_series_to_3dtensor(batch_series)
                 yield tensor
+
+            self.nested_series_leftovers = self.current_nested_series.iloc[last_idx:]
 
 
 def lsdb_data_loader(

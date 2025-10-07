@@ -26,6 +26,7 @@ dependencies = [
     "numpy>=2",
     "onnxscript>=0.5.3",
     "scipy>=1",
+    "tensorboard>=2",
     "torch>=2.8.0,<3",
     "tqdm>=4",
 ]

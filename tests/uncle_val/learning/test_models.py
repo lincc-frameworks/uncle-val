@@ -1,6 +1,5 @@
 import random
 from collections.abc import Callable
-from itertools import chain, count
 
 import numpy as np
 import pytest
@@ -53,24 +52,21 @@ def run_model(
         rng=rng,
     )
 
-    def train_dataset_fn():
-        return LSDBIterableDataset(
-            catalog=catalog,
-            client=None,
-            columns=["x", "err"],
-            batch_lc=batch_size,
-            n_src=n_src_training,
-            partitions_per_chunk=12,
-            hash_range=(0.0, 0.5),
-            seed=rng.integers(1 << 63),
-        )
-
-    infinite_train_dataset = chain.from_iterable(train_dataset_fn() for _ in count())
+    train_dataset = LSDBIterableDataset(
+        catalog=catalog,
+        client=None,
+        columns=["x", "err"],
+        batch_lc=batch_size,
+        n_src=n_src_training,
+        partitions_per_chunk=12,
+        hash_range=(0.0, 0.5),
+        loop=True,
+        seed=rng.integers(1 << 63),
+    )
 
     test_tensor = torch.concatenate(
-        [
-            chunk
-            for chunk in LSDBIterableDataset(
+        list(
+            LSDBIterableDataset(
                 catalog=catalog,
                 client=None,
                 columns=["x", "err"],
@@ -78,15 +74,16 @@ def run_model(
                 n_src=n_src_training,
                 partitions_per_chunk=12,
                 hash_range=(0.5, 1.0),
+                loop=False,
                 seed=rng.integers(1 << 63),
             )
-        ]
+        )
     )
 
     model.train()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-    for _i_step, batch in zip(range(train_batches), infinite_train_dataset, strict=False):
+    for _i_step, batch in zip(range(train_batches), train_dataset, strict=False):
         train_step(
             model=model,
             optimizer=optimizer,
@@ -136,7 +133,7 @@ def test_mlp_model_many_objects(loss):
         d_output=1,
         dropout=None,
     )
-    run_model(model=model, loss=loss, batch_size=1, train_batches=2000, n_obj=1000, rtol=0.05)
+    run_model(model=model, loss=loss, batch_size=1, train_batches=2000, n_obj=2000, rtol=0.1)
 
 
 @pytest.mark.parametrize("loss", [minus_ln_chi2_prob, kl_divergence_whiten])

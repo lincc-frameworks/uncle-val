@@ -92,6 +92,7 @@ def lsdb_nested_series_data_generator(
     n_src: int,
     partitions_per_chunk: int | None,
     hash_range: tuple[int, int] | None = None,
+    loop: bool = False,
     seed: int,
 ) -> Generator[pd.Series, None, None]:
     """Generator of nested_pandas.NestedSeries of sampled catalog data
@@ -116,14 +117,15 @@ def lsdb_nested_series_data_generator(
         background.
     n_src : int
         Number of random observations per light curve.
-    partitions_per_chunk : int or None
-        Number of `catalog` partitions per time, if None it is derived
-        from the number of dask workers associated with `Client` (one if
-        no workers or None `Client`).
+    partitions_per_chunk : int
+        Number of `catalog` partitions load in memory simultaneously.
         This changes the randomness.
     hash_range : (float, float) or None
         Compute hashes ∈ [0; 1) on `id_col` values and keeps only those in
         the specified [start; end) range. Turned off by default.
+    loop : bool
+        If `True` it runs infinitely selecting random partitions every time.
+        If `False` it runs once.
     seed : int
         Random seed to use for shuffling.
 
@@ -148,6 +150,7 @@ def lsdb_nested_series_data_generator(
         catalog=dask_series,
         client=client,
         partitions_per_chunk=partitions_per_chunk,
+        loop=loop,
         seed=seed,
     )
     yield from lsdb_generator
@@ -198,6 +201,9 @@ class LSDBIterableDataset(IterableDataset):
     hash_range : (float, float) or None
         Compute hashes ∈ [0; 1) on `id_col` values and keeps only those in
         the specified [start; end) range. Turned off by default.
+    loop : bool
+        If `True` it runs infinitely selecting random partitions every time.
+        If `False` it runs once.
     seed : int
         Random seed to use for shuffling.
 
@@ -217,20 +223,18 @@ class LSDBIterableDataset(IterableDataset):
         client: dask.distributed.Client | None,
         batch_lc: int,
         n_src: int,
-        partitions_per_chunk: int | None,
+        partitions_per_chunk: int,
         hash_range: tuple[float, float] | None = None,
+        loop: bool = False,
         seed: int,
     ):
-        self.nested_series_gen = lsdb_nested_series_data_generator(
-            catalog=catalog,
-            lc_col=lc_col,
-            id_col=id_col,
-            client=client,
-            partitions_per_chunk=partitions_per_chunk,
-            n_src=n_src,
-            hash_range=hash_range,
-            seed=seed,
-        )
+        generator_kwargs = locals().copy()
+        generator_kwargs.pop("self")
+        generator_kwargs.pop("columns")
+        generator_kwargs.pop("drop_columns")
+        generator_kwargs.pop("batch_lc")
+        self.nested_series_gen = lsdb_nested_series_data_generator(**generator_kwargs)
+
         self.id_col = id_col
         self.batch_lc = batch_lc
         self.n_src = n_src
@@ -277,6 +281,7 @@ def lsdb_data_loader(
     n_src: int,
     partitions_per_chunk: int | None,
     hash_range: tuple[float, float] | None = None,
+    loop: bool = False,
     seed: int,
     pin_memory: bool = False,
     pin_memory_device: str = "",
@@ -324,6 +329,9 @@ def lsdb_data_loader(
     hash_range : (float, float) or None
         Compute hashes ∈ [0; 1) on `id_col` values and keeps only those in
         the specified [start; end) range. Turned off by default.
+    loop : bool
+        If `True` it runs infinitely selecting random partitions every time.
+        If `False` it runs once.
     seed : int
         Random seed to use for shuffling.
     pin_memory : bool, optional
@@ -331,19 +339,11 @@ def lsdb_data_loader(
     pin_memory_device : str, optional
         Device string to use for pin memory, passed to `DataLoader`.
     """
-    dataset = LSDBIterableDataset(
-        catalog=catalog,
-        lc_col=lc_col,
-        id_col=id_col,
-        columns=columns,
-        drop_columns=drop_columns,
-        client=client,
-        batch_lc=batch_lc,
-        n_src=n_src,
-        partitions_per_chunk=partitions_per_chunk,
-        hash_range=hash_range,
-        seed=seed,
-    )
+    kwargs = locals()
+    kwargs.pop("pin_memory")
+    kwargs.pop("pin_memory_device")
+    dataset = LSDBIterableDataset(**kwargs)
+
     return DataLoader(
         dataset=dataset,
         batch_size=1,  # We batch in the dataset with batch_lc

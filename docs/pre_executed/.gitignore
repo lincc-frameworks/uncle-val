@@ -1,3 +1,6 @@
 # Torch and ONNX model files
 *.pt
 *.onnx
+
+# Tenserboard output
+runs/*

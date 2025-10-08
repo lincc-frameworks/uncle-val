@@ -258,23 +258,24 @@ class LSDBIterableDataset(IterableDataset):
     def _nested_series_to_3dtensor(self, series: NestedSeries) -> torch.Tensor:
         batch_flat_df = series.nest.to_flat()[self.columns]
         np_array_2d = batch_flat_df.to_numpy(dtype=np.float32)
-        np_array_3d = np_array_2d.reshape(self.batch_lc, self.n_src, self.n_columns)
+        np_array_3d = np_array_2d.reshape(-1, self.n_src, self.n_columns)
         return torch.tensor(np_array_3d)
 
     def __iter__(self) -> Generator[torch.Tensor, None, None]:
         for nested_series in chain([self.current_nested_series], self.nested_series_gen):
             if len(self.nested_series_leftovers) > 0:
                 nested_series = pd.concat([self.nested_series_leftovers, nested_series])
-            self.current_nested_series = nested_series
+
+            last_idx = len(nested_series) // self.batch_lc * self.batch_lc
+            self.current_nested_series, self.nested_series_leftovers = (
+                nested_series.iloc[:last_idx],
+                nested_series.iloc[last_idx:],
+            )
             del nested_series
 
-            last_idx = len(self.current_nested_series) // self.batch_lc * self.batch_lc
+            tensor = self._nested_series_to_3dtensor(self.current_nested_series)
             for i in range(0, last_idx, self.batch_lc):
-                batch_series = self.current_nested_series.iloc[i : i + self.batch_lc]
-                tensor = self._nested_series_to_3dtensor(batch_series)
-                yield tensor
-
-            self.nested_series_leftovers = self.current_nested_series.iloc[last_idx:]
+                yield tensor[i : i + self.batch_lc]
 
 
 def lsdb_data_loader(

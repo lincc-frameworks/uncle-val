@@ -32,7 +32,7 @@ def _residuals_lc(flux: torch.Tensor, err: torch.Tensor) -> torch.Tensor:
     return residuals
 
 
-def _chi2_lc(flux: torch.Tensor, err: torch.Tensor) -> torch.Tensor:
+def _chi2_lc(flux: torch.Tensor, err: torch.Tensor, *, soft: float | None) -> torch.Tensor:
     """chi2 for a single light curve
 
     Parameters
@@ -41,6 +41,8 @@ def _chi2_lc(flux: torch.Tensor, err: torch.Tensor) -> torch.Tensor:
         Flux vector, (n_src,)
     err : torch.Tensor
         Error vector, (n_src,)
+    soft : float or None
+        Softness parameter or no softness (`None`).
 
     Returns
     -------
@@ -48,11 +50,14 @@ def _chi2_lc(flux: torch.Tensor, err: torch.Tensor) -> torch.Tensor:
         chi2 value
     """
     residuals = _residuals_lc(flux, err)
+    if soft:
+        residuals = soft * torch.tanh(residuals / soft)
+
     chi2 = torch.sum(torch.square(residuals))
     return chi2
 
 
-def minus_ln_chi2_prob(flux: torch.Tensor, err: torch.Tensor) -> torch.Tensor:
+def minus_ln_chi2_prob(flux: torch.Tensor, err: torch.Tensor, *, soft: float | None = None) -> torch.Tensor:
     """-ln(prob(chi2)) for chi2 computed for given light curves and model.
 
     Parameters
@@ -61,13 +66,17 @@ def minus_ln_chi2_prob(flux: torch.Tensor, err: torch.Tensor) -> torch.Tensor:
         Corrected flux vector, (n_batch, n_src,)
     err : torch.Tensor
         Corrected error vector, (n_batch, n_src,)
+    soft : float or None
+        If `None` (default) does not soft the data. If a float, use it as
+        a growth rate for a sigmoid function (tanh) softening residuals.
+        It is a cap for the absolute value, a typical value to use is 20.
 
     Returns
     -------
     torch.Tensor, of shape ()
         Loss value
     """
-    chi2_func = torch.vmap(_chi2_lc)
+    chi2_func = torch.vmap(partial(_chi2_lc, soft=soft))
     chi2_batch = chi2_func(flux, err)
     chi2 = torch.sum(chi2_batch)
 
@@ -81,7 +90,7 @@ def minus_ln_chi2_prob(flux: torch.Tensor, err: torch.Tensor) -> torch.Tensor:
     return -lnprob
 
 
-def kl_divergence_whiten(flux: Tensor, err: Tensor) -> Tensor:
+def kl_divergence_whiten(flux: Tensor, err: Tensor, *, soft: float | None = None) -> Tensor:
     """KL(N(μ, σ²)|N(0,1)) where μ and σ are for the whiten light curves
 
     KL(N(μ, σ²)|N(0,1)) = 1/2 [μ² + σ² - ln σ² - 1]
@@ -92,6 +101,10 @@ def kl_divergence_whiten(flux: Tensor, err: Tensor) -> Tensor:
         Corrected flux vector, (n_batch, n_src,)
     err : jnp.ndarray
         Corrected error vector, (n_batch, n_src,)
+    soft : float or None
+        If `None` (default) does not soft the data. If a float, use it as
+        a growth rate for a sigmoid function (tanh) softening whiten signal.
+        It is a cap for the absolute value, a typical value to use is 20.
 
     Returns
     -------
@@ -100,6 +113,10 @@ def kl_divergence_whiten(flux: Tensor, err: Tensor) -> Tensor:
     """
     whiten_func = torch.vmap(partial(whiten_data, np=torch))
     z = whiten_func(flux, err**2)
+
+    if soft is not None:
+        z = soft * torch.tanh(z / soft)
+
     mu_z = torch.mean(z)
     # ddof is always 1 (not number of light curves), because "target" mu=0 for all whiten data points
     var_z = torch.var(z, correction=1)

@@ -40,7 +40,7 @@ def run_dp1_linear_flux_err(
     loss_fn: Callable | None = None,
     start_tfboard: bool = False,
     val_batch_over_train: int = 128,
-):
+) -> Path:
     """Run the training for DP1 with the linear model on fluxes and errors
 
     Parameters
@@ -67,6 +67,11 @@ def run_dp1_linear_flux_err(
         Whether to start a TensorBoard session.
     output_root : str or Path
         Where to save the intermediate results.
+
+    Returns
+    -------
+    Path
+        Path to the output model.
     """
     output_root = Path(output_root)
     output_dir = Path(output_root) / datetime.now().strftime("%Y-%m-%d_%H-%M")
@@ -137,7 +142,7 @@ def run_dp1_linear_flux_err(
             )
 
         val_tqdm = tqdm(range(n_validation_batches), desc="Validation batches")
-        for epoch, val_batch in zip(val_tqdm, validation_dataset, strict=False):
+        for val_step, val_batch in zip(val_tqdm, validation_dataset, strict=False):
             sum_train_loss = 0.0
             for _i_train_batch, train_batch in zip(
                 range(val_batch_over_train), training_dataset, strict=False
@@ -157,10 +162,13 @@ def run_dp1_linear_flux_err(
             )
             model.train()
 
-            summary_writer.add_scalar("Sum train loss", sum_train_loss, epoch)
-            summary_writer.add_scalar("Validation loss", validation_loss, epoch)
-            torch.save(model, epoch_model_dir / f"linear_model_{epoch:06d}.pt")
+            summary_writer.add_scalar("Sum train loss", sum_train_loss, val_step)
+            summary_writer.add_scalar("Validation loss", validation_loss, val_step)
+            torch.save(model, epoch_model_dir / f"linear_model_{val_step:06d}.pt")
 
     model.eval()
     summary_writer.add_graph(model, train_batch[0])
-    torch.save(model, output_dir / "linear_model.pt")
+    model_path = output_dir / "linear_model.pt"
+    torch.save(model, model_path)
+
+    return model_path

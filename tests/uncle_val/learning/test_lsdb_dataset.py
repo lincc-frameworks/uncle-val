@@ -8,7 +8,7 @@ from dask.distributed import Client
 from numpy.testing import assert_array_equal
 from uncle_val.datasets.fake import fake_non_variable_lcs
 from uncle_val.learning.lsdb_dataset import (
-    lsdb_data_loader,
+    LSDBIterableDataset,
     lsdb_nested_series_data_generator,
 )
 
@@ -65,7 +65,7 @@ def test_lsdb_data_generator(client):
 
 
 @pytest.mark.parametrize("client", (None, "dask"))
-def test_lsdb_data_loader(client):
+def test_lsdb_iterable_dataset(client):
     """Test LSDBDataLoader class."""
     with get_dask_client(client) as client:
         rng = np.random.default_rng(42)
@@ -75,7 +75,7 @@ def test_lsdb_data_loader(client):
         output_n_src = 100
         catalog = generate_fake_catalog(output_n_obj, output_n_src, rng)
 
-        dataset = lsdb_data_loader(
+        dataset = LSDBIterableDataset(
             catalog=catalog,
             lc_col="lc",
             columns=["x", "err"],
@@ -93,4 +93,4 @@ def test_lsdb_data_loader(client):
 
         tensor = torch.concatenate(chunks)
         # We have just two features: x and err
-        assert tensor.shape == (output_n_obj // batches, batches, output_n_src, 2)
+        assert tensor.shape == (output_n_obj // batches * batches, output_n_src, 2)

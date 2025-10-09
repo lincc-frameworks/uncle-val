@@ -8,7 +8,7 @@ import torch
 from hats import HealpixPixel
 from lsdb import Catalog
 from nested_pandas import NestedFrame, NestedSeries
-from torch.utils.data import DataLoader, IterableDataset
+from torch.utils.data import IterableDataset
 
 from uncle_val.datasets.lsdb_generator import LSDBDataGenerator
 from uncle_val.utils.hashing import uniform_hash
@@ -276,88 +276,3 @@ class LSDBIterableDataset(IterableDataset):
             tensor = self._nested_series_to_3dtensor(self.current_nested_series)
             for i in range(0, last_idx, self.batch_lc):
                 yield tensor[i : i + self.batch_lc]
-
-
-def lsdb_data_loader(
-    catalog: Catalog,
-    *,
-    lc_col: str = "lc",
-    id_col: str = "id",
-    columns: list[str] | None,
-    drop_columns: list[str] | None = None,
-    client: dask.distributed.Client | None,
-    batch_lc: int,
-    n_src: int,
-    partitions_per_chunk: int | None,
-    hash_range: tuple[float, float] | None = None,
-    loop: bool = False,
-    seed: int,
-    pin_memory: bool = False,
-    pin_memory_device: str = "",
-) -> DataLoader:
-    """Make a torch DataLoader object from an LSDB catalog.
-
-    Torch data loader fetching data using LSDB.
-
-    It yields dict("subset": `torch.Tensor`).
-    The first subset tensor shape is always (batch_lc, n_src, n_features);
-    other batch sizes may vary.
-
-    Parameters
-    ----------
-    catalog : Catalog
-        LSDB catalog, it should have the only nested column, `lc_col`, and
-        an `id` value if splits are specified.
-    lc_col : str, optional
-        LSDB light curve column name, default is "lc".
-    id_col : str, optional
-        LSDB ID column name, used for hash calculation when
-        `hash_range` is specified. This column is always being dropped from
-        the dataset.
-    columns : list of str or None, optional
-        List of column names (both base and nested into `lc_col`) to use.
-        If None, all columns will be used, and it is assumed "x" and "err"
-        are there. Note that all columns should be castable to float32.
-    drop_columns : list of str or None, optional
-        List of column names (both base and nested into `lc_col`) to drop,
-        if None nothing is dropped.
-    client : dask.distributed.Client or None, optional
-        Dask client to use, default is None, which would not lock on each next
-        value. If a Dask client is given, the data would be fetched on the
-        background.
-    batch_lc : int
-        Number of batches to yield. If `splits` is used, it will be the size
-        of the first subset.
-    n_src : int
-        Number of random observations per light curve.
-    partitions_per_chunk : int or None
-        Number of `catalog` partitions per time, if None it is derived
-        from the number of dask workers associated with `Client` (one if
-        no workers or None `Client`).
-        This changes the randomness.
-    hash_range : (float, float) or None
-        Compute hashes ∈ [0; 1) on `id_col` values and keeps only those in
-        the specified [start; end) range. Turned off by default.
-    loop : bool
-        If `True` it runs infinitely selecting random partitions every time.
-        If `False` it runs once.
-    seed : int
-        Random seed to use for shuffling.
-    pin_memory : bool, optional
-        Whether to pin memory, default is False.
-    pin_memory_device : str, optional
-        Device string to use for pin memory, passed to `DataLoader`.
-    """
-    kwargs = locals()
-    kwargs.pop("pin_memory")
-    kwargs.pop("pin_memory_device")
-    dataset = LSDBIterableDataset(**kwargs)
-
-    return DataLoader(
-        dataset=dataset,
-        batch_size=1,  # We batch in the dataset with batch_lc
-        shuffle=False,  # We shuffle in the dataset
-        num_workers=0,  # We use Dask workers already, no need to use parallel processing with torch
-        pin_memory=pin_memory,
-        pin_memory_device=pin_memory_device,
-    )

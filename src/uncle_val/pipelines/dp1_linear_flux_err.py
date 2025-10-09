@@ -40,6 +40,7 @@ def run_dp1_linear_flux_err(
     loss_fn: Callable | None = None,
     start_tfboard: bool = False,
     val_batch_over_train: int = 128,
+    device: str | torch.device = "cpu",
 ) -> Path:
     """Run the training for DP1 with the linear model on fluxes and errors
 
@@ -67,6 +68,8 @@ def run_dp1_linear_flux_err(
         Whether to start a TensorBoard session.
     output_root : str or Path
         Where to save the intermediate results.
+    device : str or torch.device, optional
+        Torch device to use for training, default is "cpu".
 
     Returns
     -------
@@ -103,7 +106,7 @@ def run_dp1_linear_flux_err(
         lambda df: df.drop(columns=["r_psfMag", "coord_ra", "coord_dec", "extendedness"])
     )
 
-    model = LinearModel(d_input=2, d_output=1)
+    model = LinearModel(d_input=2, d_output=1).to(device=device)
     model.train()
 
     optimizer = Adam(model.parameters(), lr=1e-3)
@@ -125,6 +128,7 @@ def run_dp1_linear_flux_err(
                     loop=True,
                     hash_range=(0.00, 0.70),
                     seed=0,
+                    device=device,
                 )
             )
             validation_dataset = iter(
@@ -138,6 +142,7 @@ def run_dp1_linear_flux_err(
                     loop=True,
                     hash_range=(0.70, 0.85),
                     seed=0,
+                    device=device,
                 )
             )
 

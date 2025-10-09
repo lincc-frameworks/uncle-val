@@ -206,6 +206,8 @@ class LSDBIterableDataset(IterableDataset):
         If `False` it runs once.
     seed : int
         Random seed to use for shuffling.
+    device : str or torch.device, optional
+        Torch device to put data into, default is "cpu"
 
     See Also
     --------
@@ -227,17 +229,20 @@ class LSDBIterableDataset(IterableDataset):
         hash_range: tuple[float, float] | None = None,
         loop: bool = False,
         seed: int,
+        device: str | torch.device = "cpu",
     ):
         generator_kwargs = locals().copy()
         generator_kwargs.pop("self")
         generator_kwargs.pop("columns")
         generator_kwargs.pop("drop_columns")
         generator_kwargs.pop("batch_lc")
+        generator_kwargs.pop("device")
         self.nested_series_gen = lsdb_nested_series_data_generator(**generator_kwargs)
 
         self.id_col = id_col
         self.batch_lc = batch_lc
         self.n_src = n_src
+        self.device = torch.device(device)
         self.current_nested_series = next(self.nested_series_gen)
         self.nested_series_leftovers = NestedSeries()
 
@@ -259,7 +264,7 @@ class LSDBIterableDataset(IterableDataset):
         batch_flat_df = series.nest.to_flat()[self.columns]
         np_array_2d = batch_flat_df.to_numpy(dtype=np.float32)
         np_array_3d = np_array_2d.reshape(-1, self.n_src, self.n_columns)
-        return torch.tensor(np_array_3d)
+        return torch.tensor(np_array_3d).to(self.device)
 
     def __iter__(self) -> Generator[torch.Tensor, None, None]:
         for nested_series in chain([self.current_nested_series], self.nested_series_gen):

@@ -12,7 +12,7 @@ def train_step(
     optimizer: Optimizer,
     loss: Callable[[Tensor, Tensor], Tensor],
     batch: Tensor,
-) -> None:
+) -> Tensor:
     """Training step on a single light curve.
 
     Parameters

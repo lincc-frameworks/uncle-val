@@ -151,7 +151,7 @@ class MLPModel(UncleModel):
         for i, (d1, d2) in enumerate(zip(dims[:-1], dims[1:], strict=False)):
             layers.append(torch.nn.Linear(d1, d2))
             if i < len(dims) - 2:  # not the last layer
-                layers.append(torch.nn.ReLU())
+                layers.append(torch.nn.GELU())
                 if self.dropout is not None:
                     layers.append(torch.nn.Dropout(self.dropout))
         self.module = torch.nn.Sequential(*layers)

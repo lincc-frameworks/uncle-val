@@ -1,3 +1,5 @@
+from functools import partial
+
 import jax
 import jax.numpy as jnp
 import numba
@@ -32,8 +34,9 @@ def test_whiten_data_jax():
     rng = np.random.default_rng(42)
     err = rng.exponential(size=n_src)
     flux = rng.normal(loc=10, scale=err)
-    z = jax.jit(lambda *args: whiten_data(*args, np=jnp))(jnp.asarray(flux), jnp.asarray(err) ** 2)
+    func = jax.jit(partial(whiten_data, np=jnp))
 
+    z = func(jnp.asarray(flux), jnp.asarray(err) ** 2)
     assert_allclose(np.mean(z), 0.0, atol=3.0 / np.sqrt(n_src))
     assert_allclose(np.std(z), 1.0, rtol=3.0 / np.sqrt(n_src))
 
@@ -44,8 +47,9 @@ def test_whiten_data_numba():
     rng = np.random.default_rng(42)
     err = rng.exponential(size=n_src)
     flux = rng.normal(loc=10, scale=err)
-    z = numba.njit(whiten_data)(flux, err**2, None)
+    func = partial(numba.njit(whiten_data), np=None)
 
+    z = func(flux, err**2)
     assert_allclose(np.mean(z), 0.0, atol=3.0 / np.sqrt(n_src))
     assert_allclose(np.std(z), 1.0, rtol=3.0 / np.sqrt(n_src))
 
@@ -56,9 +60,16 @@ def test_whiten_data_torch():
     rng = np.random.default_rng(42)
     err = rng.exponential(size=n_src)
     flux = rng.normal(loc=10, scale=err)
-    z = torch.compile(lambda *args: whiten_data(*args, np=torch))(torch.tensor(flux), torch.tensor(err) ** 2)
+    func = torch.compile(partial(whiten_data, np=torch))
 
-    z = np.asarray(z)
+    x = torch.tensor(flux, dtype=torch.float32)
+    v = torch.tensor(err**2, dtype=torch.float32)
+
+    # Check if no errors on a non-CPU device
+    _ = func(x.to("meta"), v.to("meta"))
+
+    # Check the results are correct
+    z = func(x, v).cpu().numpy()
 
     assert_allclose(np.mean(z), 0.0, atol=3.0 / np.sqrt(n_src))
     assert_allclose(np.std(z), 1.0, rtol=3.0 / np.sqrt(n_src))

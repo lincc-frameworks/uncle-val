@@ -69,7 +69,7 @@ class LSDBDataGenerator(Iterator[pd.Series | pd.DataFrame]):
         self.loop = loop
         self.seed = seed
 
-        self.rng = np.random.default_rng((1 << 32, seed))
+        self.rng = np.random.default_rng((1 << 32, self.seed))
 
         self.partitions_left = self.rng.permutation(self.catalog.npartitions)
         self._empty = False

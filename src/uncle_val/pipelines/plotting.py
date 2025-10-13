@@ -24,30 +24,6 @@ def _whiten_flux_err(flux, err):
     return {"whiten.z": numba_whiten_data(flux, np.square(err))}
 
 
-def _whiten_corrected_flux_err(flux, err, *, model: UncleModel):
-    x = torch.tensor(np.stack([flux, err], axis=-1, dtype=np.float32))
-    output = model(x).cpu().detach().numpy()
-    u = output[..., 0]
-    corrected_err = u * err
-    if model.outputs_s:
-        s = output[..., 1]
-        corrected_flux = (1.0 + s) * flux
-    else:
-        corrected_flux = flux
-    return _whiten_flux_err(corrected_flux, corrected_err)
-
-
-def get_whiten_fn(model: None | UncleModel):
-    """Create a whiten function
-
-    Parameters
-    ----------
-    model : UncleModel or None
-        Model to use for data correction.
-    """
-    return _whiten_flux_err if model is None else partial(_whiten_corrected_flux_err, model=model)
-
-
 def _samples_in_bins(x, bins, sample_count, rng):
     bin_idx = np.digitize(x, bins)
     samples = []
@@ -60,7 +36,19 @@ def _samples_in_bins(x, bins, sample_count, rng):
 
 
 def _extract_hists(
-    df, pixel, *, test_only, z_bins, mag_bins, bands, min_n_src, n_samples, non_extended_only, whiten_fn
+    df,
+    pixel,
+    *,
+    test_only,
+    z_bins,
+    mag_bins,
+    bands,
+    min_n_src,
+    n_samples,
+    non_extended_only,
+    model_path,
+    model_columns,
+    device,
 ):
     rng = np.random.default_rng((pixel.order, pixel.pixel))
 
@@ -87,9 +75,50 @@ def _extract_hists(
             }
         )
 
+    if model_path is not None:
+        model = torch.load(model_path, weights_only=False).to(device)
+        model.eval()
+
+        # model_subcolumns = []
+        # for col in model_columns:
+        #     if col.startswith("lc."):
+        #         model_subcolumns.append(col.removeprefix("lc."))
+        #         continue
+        #     model_subcolumns.append(col)
+        #     df[f"lc.{col}"] = df[col]
+        #
+        # model_inputs = df["lc"].nest.to_flat(model_subcolumns).to_numpy(dtype=np.float32)
+        # chunked_model = torch.vmap(model, chunk_size=128)
+        # model_output = chunked_model(torch.tensor(model_inputs, device=device)).cpu().detach().numpy()
+        #
+        # uu = model_output[..., 0].flatten()
+        # err_col = "lc.corrected_err"
+        # df[err_col] = uu * df["lc.err"]
+        #
+        # if model.outputs_s:
+        #     sf = model_output[..., 1].flatten()
+        #     x_col = "lc.corrected_x"
+        #     df[x_col] = (1.0 + sf) * df["lc.x"]
+
+        def apply_model(x, err, *extras):
+            inputs = np.stack(np.broadcast_arrays(x, err, *extras), axis=-1, dtype=np.float32)
+            outputs = model(torch.tensor(inputs, device=device)).cpu().detach().numpy()
+
+            uu = outputs[..., 0].flatten()
+            corrected_err = uu * err
+            if model.outputs_s:
+                sf = outputs[..., 1].flatten()
+                corrected_x = (1.0 + sf) * x
+            else:
+                corrected_x = x
+
+            return {"corrected_lc.x": corrected_x, "corrected_lc.err": corrected_err}
+
+        df["lc"] = df.reduce(apply_model, *model_columns)["corrected_lc"]
+
     whiten = (
         df.reduce(
-            whiten_fn,
+            _whiten_flux_err,
             "lc.x",
             "lc.err",
             append_columns=True,
@@ -152,7 +181,9 @@ def _get_hists(
     min_n_src: int,
     non_extended_only: bool,
     n_workers: int,
-    model: UncleModel | None,
+    model_path: str | Path | None,
+    model_columns: Sequence[str],
+    device: torch.device | str = "cpu",
     mag_bins: np.ndarray,
     z_bins: np.ndarray,
     n_samples: int,
@@ -176,10 +207,12 @@ def _get_hists(
         min_n_src=min_n_src,
         n_samples=n_samples,
         non_extended_only=non_extended_only,
-        whiten_fn=get_whiten_fn(model),
+        model_path=model_path,
+        model_columns=model_columns,
+        device=torch.device(device),
     )
 
-    with Client(n_workers=8, threads_per_worker=1, memory_limit="8GB") as client:
+    with Client(n_workers=n_workers, threads_per_worker=1, memory_limit="8GB") as client:
         print(f"Dask Dashboard Link: {client.dashboard_link}")
         hists_df = hists.compute()
 
@@ -268,12 +301,15 @@ def _plot_magn_vs_uu(
 
 def make_plots(
     dp1_root: str | Path,
+    *,
     test_only: bool,
     min_n_src: int,
     non_extended_only: bool,
     n_workers: int,
-    model: str | Path | UncleModel | None,
+    model_path: str | Path | UncleModel | None,
+    model_columns: Sequence[str] = ("lc.x", "lc.err"),
     n_samples: int,
+    device: torch.device | str = "cpu",
     object_mags: Sequence[float] | float = (),
     output_dir: str | Path | None = None,
 ):
@@ -291,26 +327,29 @@ def make_plots(
         Whether to filter the data with `extendedness == 0.0`.
     n_workers : int
         Number of Dask workers to use.
-    model : path or UncleModel or None
-        Path to a torch model file, or instance of uncle_val.models.UncleModel
-        or None. If None, plot the original data.
+    model_path : path or None
+        Path to a torch model file or None. If None, plot the original data.
+    model_columns : Sequence[str], optional
+        Columns to pass to the model, first two must be flux and error.
     n_samples : int
         Number of samples per magnitude bin to use for UU vs object mag
         plot.
+    device : torch.device | str
+        Torch device to use with the model.
     object_mags : list of float or float
         Object magnitude bins to use for histogram plots.
     output_dir : path or None
         If given, output PDF plots to a given directory. If not,
          show them.
     """
-    if isinstance(model, str | Path):
-        model = torch.load(model, weights_only=False)
     if isinstance(output_dir, str):
         output_dir = Path(output_dir)
     if isinstance(object_mags, float):
         object_mags = [object_mags]
 
-    filename_suffix = "" if model is None else "_corrected"
+    if_model = model_path is not None
+
+    filename_suffix = "" if if_model is None else "_corrected"
 
     bands = "ugrizy"
 
@@ -328,7 +367,9 @@ def make_plots(
         min_n_src=min_n_src,
         non_extended_only=non_extended_only,
         n_workers=n_workers,
-        model=model,
+        model_path=model_path,
+        model_columns=model_columns,
+        device=device,
         mag_bins=mag_bins,
         z_bins=z_bins,
         n_samples=n_samples,
@@ -341,7 +382,7 @@ def make_plots(
             hists,
             axes[i],
             band,
-            if_model=model is not None,
+            if_model=if_model,
             z_centers=z_centers,
             z_width=z_width,
             z_bins=z_bins,
@@ -364,7 +405,7 @@ def make_plots(
                 hists.query(f"mag_bin_idx == {mag_bin_idx}"),
                 axes[i],
                 band,
-                if_model=model is not None,
+                if_model=if_model,
                 z_centers=z_centers,
                 z_width=z_width,
                 z_bins=z_bins,

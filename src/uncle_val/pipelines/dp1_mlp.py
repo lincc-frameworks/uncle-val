@@ -3,16 +3,14 @@ from pathlib import Path
 
 import torch
 
-from uncle_val.datasets import dp1_catalog_single_band
-from uncle_val.learning.models import LinearModel
+from uncle_val.datasets.dp1 import dp1_catalog_multi_band
+from uncle_val.learning.models import MLPModel
 from uncle_val.pipelines.training_loop import training_loop
 
 
-def run_dp1_linear_flux_err(
+def run_dp1_mlp(
     *,
     dp1_root: str | Path,
-    band: str,
-    non_extended_only: bool,
     n_workers: int,
     n_src: int,
     n_lcs: int,
@@ -21,8 +19,8 @@ def run_dp1_linear_flux_err(
     loss_fn: Callable | None = None,
     start_tfboard: bool = False,
     val_batch_over_train: int = 128,
-    device: str | torch.device = "cpu",
-) -> Path:
+    device: torch.device | str = "cpu",
+) -> tuple[Path, list[str]]:
     """Run the training for DP1 with the linear model on fluxes and errors
 
     Parameters
@@ -41,52 +39,54 @@ def run_dp1_linear_flux_err(
         Number of light curves to train on.
     train_batch_size : int
         Batch size for training.
+    output_root : str or Path
+        Where to save the intermediate results.
     val_batch_over_train : int
         Ratio of batch sizes for training and validation.
     loss_fn : Callable or None
         Loss function to use, by default soften Χ² is used.
     start_tfboard : bool
         Whether to start a TensorBoard session.
-    output_root : str or Path
-        Where to save the intermediate results.
-    device : str or torch.device, optional
-        Torch device to use for training, default is "cpu".
+    device : torch.device | str
+        Torch device to use for training.
 
     Returns
     -------
     Path
         Path to the output model.
+    list[str]
+        List of columns to use as model inputs.
     """
-    catalog = dp1_catalog_single_band(
+    bands = "ugrizy"
+
+    catalog = dp1_catalog_multi_band(
         root=dp1_root,
-        band=band,
+        bands=bands,
         obj="science",
         img="cal",
         phot="PSF",
         mode="forced",
-    )
+    ).map_partitions(lambda df: df.drop(columns=["band", "object_mag", "coord_ra", "coord_dec"]))
 
-    if non_extended_only:
-        catalog = catalog.query("extendedness == 0.0")
-    catalog = catalog.map_partitions(
-        lambda df: df.drop(columns=["r_psfMag", "coord_ra", "coord_dec", "extendedness"])
-    )
+    columns = ["lc.x", "lc.err", "extendedness"] + [f"is_{band}_band" for band in bands]
+    columns_no_prefix = [col.removeprefix("lc.") for col in columns]
 
-    model = LinearModel(d_input=2, d_output=1).to(device=device)
+    model = MLPModel(d_input=len(columns), d_middle=(300, 300, 500, 1000, 500), dropout=0.1, d_output=1)
 
-    return training_loop(
+    model_path = training_loop(
         catalog=catalog,
-        columns=None,
+        columns=columns_no_prefix,
         model=model,
         loss_fn=loss_fn,
-        lr=3e-4,
+        lr=1e-5,
         n_workers=n_workers,
         n_src=n_src,
         n_lcs=n_lcs,
         train_batch_size=train_batch_size,
         val_batch_over_train=val_batch_over_train,
         output_root=output_root,
-        device=device,
         start_tfboard=start_tfboard,
-        model_name="linear",
+        device=device,
+        model_name="mlp",
     )
+    return model_path, columns

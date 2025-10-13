@@ -9,19 +9,19 @@ def _stable_decomposition(a, np=None):
         np = numpy
 
     n = len(a)
-    n_float = np.asarray(n, dtype=a.dtype)
+    n_float = np.full_like(a[0], n)
     mat_d = np.diag(a)
-    one_vec = np.ones((n, 1), dtype=a.dtype) / np.sqrt(n_float)
+    one_vec = np.ones_like(a.reshape(-1, 1)) / np.sqrt(n_float)
 
     inv_a_sum = np.sum(1.0 / a)
-    u = np.ones((n, 1)) / np.sqrt(inv_a_sum)
+    u = np.ones_like(a.reshape(-1, 1)) / np.sqrt(inv_a_sum)
 
     # Explicit eigenvalue along ones-vector:
     lambda_min = (one_vec.T @ (mat_d - u @ u.T) @ one_vec)[0]
     lambda_min = np.maximum(lambda_min, np.asarray(1e-8))
 
     # Construct orthonormal basis explicitly:
-    mat_q, _ = np.linalg.qr(np.eye(n) - one_vec @ one_vec.T)
+    mat_q, _ = np.linalg.qr(np.diag(np.ones_like(a)) - one_vec @ one_vec.T)
     mat_q = mat_q[:, : n - 1]  # explicitly enforce correct dimensions (n x n-1)
 
     # Project onto orthogonal subspace:

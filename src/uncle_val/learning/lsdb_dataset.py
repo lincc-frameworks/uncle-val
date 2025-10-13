@@ -1,7 +1,7 @@
 from collections.abc import Generator
 from itertools import chain
 
-import dask
+import dask.distributed
 import numpy as np
 import pandas as pd
 import torch
@@ -12,6 +12,7 @@ from torch.utils.data import IterableDataset
 
 from uncle_val.datasets.lsdb_generator import LSDBDataGenerator
 from uncle_val.utils.hashing import uniform_hash
+from uncle_val.utils.variable import Variable
 
 
 def _reduce_all_columns_wrapper(*args, columns=None, udf, **kwargs):
@@ -42,7 +43,7 @@ def _process_partition(
     lc_col: str,
     id_col: str,
     hash_range: tuple[int, int] | None,
-    seed: int,
+    seed: Variable,
 ) -> NestedFrame:
     length_col = f"__length_{lc_col}_"
     nf[length_col] = nf[lc_col].nest.list_lengths
@@ -67,7 +68,7 @@ def _process_partition(
             fixed_length_series = fixed_length_series.nest.with_field(col, nf[col])
         return fixed_length_series
 
-    rng = np.random.default_rng((pixel.order, pixel.pixel, seed))
+    rng = np.random.default_rng((pixel.order, pixel.pixel, seed.get()))
 
     fixed_length_nf = nf.reduce(
         _reduce_all_columns_wrapper,
@@ -137,6 +138,10 @@ def lsdb_nested_series_data_generator(
     if hash_range is not None and (hash_range[0] < 0 or hash_range[1] > 1):
         raise ValueError(f"`hash_range` must be between 0 and 1, {hash_range} is given")
 
+    rng = np.random.default_rng(seed)
+    partition_shuffle_seed = rng.integers(1 << 63).item()
+    src_shuffle_seed = Variable(rng.integers(1 << 63).item())
+
     dask_series = catalog.map_partitions(
         _process_partition,
         include_pixel=True,
@@ -144,15 +149,18 @@ def lsdb_nested_series_data_generator(
         lc_col=lc_col,
         id_col=id_col,
         hash_range=hash_range,
-        seed=seed,
+        seed=src_shuffle_seed,
     )
     lsdb_generator = LSDBDataGenerator(
         catalog=dask_series,
         client=client,
         partitions_per_chunk=partitions_per_chunk,
         loop=loop,
-        seed=seed,
+        seed=partition_shuffle_seed,
     )
+    for chunk in lsdb_generator:
+        yield chunk
+        src_shuffle_seed.set(rng.integers(1 << 63).item())
     yield from lsdb_generator
 
 

@@ -20,7 +20,7 @@ def run_dp1_mlp(
     start_tfboard: bool = False,
     val_batch_over_train: int = 128,
     device: torch.device | str = "cpu",
-) -> Path:
+) -> tuple[Path, list[str]]:
     """Run the training for DP1 with the linear model on fluxes and errors
 
     Parameters
@@ -54,6 +54,8 @@ def run_dp1_mlp(
     -------
     Path
         Path to the output model.
+    list[str]
+        List of columns to use as model inputs.
     """
     bands = "ugrizy"
 
@@ -66,13 +68,14 @@ def run_dp1_mlp(
         mode="forced",
     ).map_partitions(lambda df: df.drop(columns=["band", "object_mag", "coord_ra", "coord_dec"]))
 
-    columns = ["x", "err", "extendedness"] + [f"is_{band}_band" for band in bands]
+    columns = ["lc.x", "lc.err", "extendedness"] + [f"is_{band}_band" for band in bands]
+    columns_no_prefix = [col.removeprefix("lc.") for col in columns]
 
     model = MLPModel(d_input=len(columns), d_middle=(300, 300, 500, 1000, 500), dropout=0.1, d_output=1)
 
-    return training_loop(
+    model_path = training_loop(
         catalog=catalog,
-        columns=columns,
+        columns=columns_no_prefix,
         model=model,
         loss_fn=loss_fn,
         lr=1e-5,
@@ -86,3 +89,4 @@ def run_dp1_mlp(
         device=device,
         model_name="mlp",
     )
+    return model_path, columns

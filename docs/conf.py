@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.abspath("../src/"))
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "uncle-val"
-copyright = "2024, Konstantin Malanchev"
+copyright = "2025, Konstantin Malanchev"
 author = "Konstantin Malanchev"
 release = version("uncle-val")
 # for example take major/minor

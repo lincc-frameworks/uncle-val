@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Local Dashboards</title>
+  <style>
+    html, body {
+      height: 100%;
+      width: 100%;
+      margin: 0;
+      display: flex;
+      flex-direction: row;  /* or column */
+    }
+    iframe {
+      width: 50%;  /* side by side */
+      height: 100%;
+      border: none;
+      flex-grow: 1;
+    }
+  </style>
+</head>
+<body>
+  <iframe src="http://localhost:8787/status" title="Dask"></iframe>
+  <iframe src="http://localhost:6006" title="TensorBoard"></iframe>
+</body>
+</html>

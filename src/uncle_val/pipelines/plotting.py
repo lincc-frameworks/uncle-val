@@ -14,7 +14,6 @@ from scipy.stats import norm
 
 from uncle_val.datasets.dp1 import dp1_catalog_multi_band
 from uncle_val.learning.models import UncleModel
-from uncle_val.pipelines.splits import TEST_SPLIT
 from uncle_val.utils.hashing import uniform_hash
 from uncle_val.whitening import whiten_data
 
@@ -40,7 +39,7 @@ def _extract_hists(
     df,
     pixel,
     *,
-    test_only,
+    hash_range,
     z_bins,
     mag_bins,
     bands,
@@ -55,9 +54,9 @@ def _extract_hists(
 
     df = df[df["lc"].nest.list_lengths >= min_n_src]
 
-    if test_only:
+    if hash_range is not None:
         hashes = uniform_hash(df["id"])
-        df = df[(hashes >= TEST_SPLIT[0]) and (hashes < TEST_SPLIT[1])]
+        df = df[(hashes >= hash_range[0]) & (hashes < hash_range[1])]
 
     if non_extended_only:
         df = df.query("extendedness == 0.0")
@@ -177,7 +176,7 @@ def _extract_hists(
 def _get_hists(
     dp1_root: str | Path,
     *,
-    test_only: bool,
+    hash_range: tuple[float, float] | None = None,
     bands: Sequence[str],
     min_n_src: int,
     non_extended_only: bool,
@@ -201,7 +200,7 @@ def _get_hists(
     hists = catalog.map_partitions(
         _extract_hists,
         include_pixel=True,
-        test_only=test_only,
+        hash_range=hash_range,
         z_bins=z_bins,
         mag_bins=mag_bins,
         bands=bands,
@@ -303,7 +302,7 @@ def _plot_magn_vs_uu(
 def make_plots(
     dp1_root: str | Path,
     *,
-    test_only: bool,
+    hash_range: tuple[float, float] | None = None,
     min_n_src: int,
     non_extended_only: bool,
     n_workers: int,
@@ -320,8 +319,8 @@ def make_plots(
     ----------
     dp1_root : str | Path
         The root directory of the DP1 HATS catalogs.
-    test_only : bool
-        Whether use "test" subset (15% of the data) or all the data.
+    hash_range : min and max hash value (between 0 and 1) or None
+        If not None, filter by object's float hashes.
     min_n_src : int
         Minimum number of sources per object.
     non_extended_only : bool
@@ -363,7 +362,7 @@ def make_plots(
 
     hists = _get_hists(
         dp1_root,
-        test_only=test_only,
+        hash_range=hash_range,
         bands=bands,
         min_n_src=min_n_src,
         non_extended_only=non_extended_only,

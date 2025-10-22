@@ -71,7 +71,7 @@ def run_dp1_mlp(
     columns = ["lc.x", "lc.err", "extendedness"] + [f"is_{band}_band" for band in bands]
     columns_no_prefix = [col.removeprefix("lc.") for col in columns]
 
-    model = MLPModel(d_input=len(columns), d_middle=(300, 300, 500, 1000, 500), dropout=0.1, d_output=1)
+    model = MLPModel(d_input=len(columns), d_middle=(300, 300, 500), dropout=None, d_output=1)
 
     model_path = training_loop(
         catalog=catalog,

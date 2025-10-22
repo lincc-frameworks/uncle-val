@@ -102,6 +102,23 @@ def _filter_variable_lcs(df, *, nested_flux_col, nested_err_col, var_detector):
     return df[~is_variable]
 
 
+def _add_visit_info(df, *, lc_col, ccd_visits_path, ccd_visits_cols):
+    visits = pd.read_parquet(ccd_visits_path, columns=ccd_visits_cols, dtype_backend="pyarrow")
+    flat_lc = df.explode(lc_col)
+    merged = pd.merge(
+        visits,
+        flat_lc,
+        how="right",
+        left_on=["visitId", "detectorId"],
+        right_on=["visit", "detector"],
+    ).drop(
+        # We keep detector fow now
+        columns=["visit", "visitId", "detectorId"],
+    )
+    df = df.drop(columns=lc_col).add_nested(merged, lc_col, how="inner")
+    return df
+
+
 def _process_partition_multi_band(
     df,
     *,
@@ -112,6 +129,8 @@ def _process_partition_multi_band(
     source_flag_cols,
     bands,
     var_detector,
+    ccd_visits_path,
+    ccd_visits_cols,
 ):
     df = _rename_columns(df, lc_col=lc_col, id_col=id_col, flux_col=flux_col, flux_err_col=flux_err_col)
 
@@ -129,6 +148,12 @@ def _process_partition_multi_band(
     # Encode band names
     df = _one_hot_encode_band(df, dtype=bool)
 
+    # Add some columns from the CCD Visits table
+    if ccd_visits_path is not None:
+        df = _add_visit_info(
+            df, lc_col="lc", ccd_visits_path=ccd_visits_path, ccd_visits_cols=ccd_visits_cols
+        )
+
     return df
 
 
@@ -140,6 +165,7 @@ def _open_catalog(
     img: Literal["cal"] | Literal["diff"],
     phot: Literal["PSF"],
     mode: Literal["forced"],
+    read_visit_cols: bool,
 ) -> tuple[lsdb.Catalog, dict[str, str | list[str]]]:
     """Open right catalog with right columns, no filtering.
     Also returns column specs dict.
@@ -184,6 +210,7 @@ def _open_catalog(
         "pixelFlags_cr",
         "pixelFlags_bad",
     ]
+    visit_cols = ["visit", "detector"] if read_visit_cols else []
 
     catalog = lsdb.open_catalog(
         root / catalog_name,
@@ -196,7 +223,8 @@ def _open_catalog(
         ]
         + [f"{source_col}.{flag_col}" for flag_col in other_flag_cols]
         + obj_mag_cols
-        + obj_extendedness_cols,
+        + obj_extendedness_cols
+        + [f"{source_col}.{col}" for col in visit_cols],
     )
     return catalog, {
         "id_col": id_col,
@@ -253,6 +281,7 @@ def dp1_catalog_single_band(
         img=img,
         phot=phot,
         mode=mode,
+        read_visit_cols=False,
     )
 
     if variability_detectors == "all":
@@ -327,6 +356,9 @@ def dp1_catalog_multi_band(
     lsdb.Catalog
         Filtered LSDB Catalog object.
     """
+    if isinstance(root, str):
+        root = Path(root)
+
     input_bands = frozenset(bands)
     if not input_bands.issubset(LSDB_BANDS):
         raise ValueError(f"Some of the given bands ({bands}) are not in {LSDB_BANDS}")
@@ -339,11 +371,15 @@ def dp1_catalog_multi_band(
         img=img,
         phot=phot,
         mode=mode,
+        read_visit_cols=True,
     )
 
     if variability_detectors == "all":
         variability_detectors = None
     var_detector = get_combined_variability_detector(variability_detectors)
+
+    ccd_visits_path = root / "public_parquet" / "ccd_visit.parquet"
+    ccd_visits_cols = ["visitId", "detectorId", "zenithDistance", "expTime", "seeing", "skyBg"]
 
     mapped_catalog = catalog.map_partitions(
         _process_partition_multi_band,
@@ -354,5 +390,7 @@ def dp1_catalog_multi_band(
         flux_err_col=col_names["flux_err_col"],
         bands=bands,
         var_detector=var_detector,
+        ccd_visits_path=ccd_visits_path,
+        ccd_visits_cols=ccd_visits_cols,
     )
     return mapped_catalog

@@ -15,6 +15,7 @@ from uncle_val.learning.losses import minus_ln_chi2_prob
 from uncle_val.learning.lsdb_dataset import LSDBIterableDataset
 from uncle_val.learning.models import UncleModel
 from uncle_val.learning.training import evaluate_loss, train_step
+from uncle_val.pipelines.splits import TRAIN_SPLIT, VALIDATION_SPLIT
 from uncle_val.pipelines.utils import _launch_tfboard
 
 
@@ -111,7 +112,7 @@ def training_loop(
                     n_src=n_src,
                     partitions_per_chunk=n_workers * 2,
                     loop=True,
-                    hash_range=(0.00, 0.70),
+                    hash_range=TRAIN_SPLIT,
                     seed=0,
                     device=device,
                 )
@@ -125,7 +126,7 @@ def training_loop(
                     n_src=n_src,
                     partitions_per_chunk=n_workers * 8,
                     loop=True,
-                    hash_range=(0.70, 0.85),
+                    hash_range=VALIDATION_SPLIT,
                     seed=0,
                     device=device,
                 )

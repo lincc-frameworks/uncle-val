@@ -14,6 +14,7 @@ from scipy.stats import norm
 
 from uncle_val.datasets.dp1 import dp1_catalog_multi_band
 from uncle_val.learning.models import UncleModel
+from uncle_val.pipelines.splits import TEST_SPLIT
 from uncle_val.utils.hashing import uniform_hash
 from uncle_val.whitening import whiten_data
 
@@ -56,7 +57,7 @@ def _extract_hists(
 
     if test_only:
         hashes = uniform_hash(df["id"])
-        df = df[hashes >= 0.75]
+        df = df[(hashes >= TEST_SPLIT[0]) and (hashes < TEST_SPLIT[1])]
 
     if non_extended_only:
         df = df.query("extendedness == 0.0")

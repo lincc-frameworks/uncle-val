@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from functools import cached_property
 from pathlib import Path
 
@@ -12,9 +12,6 @@ class UncleModel(torch.nn.Module):
 
     You must re-implement __init__() to call super().__init__()
     and to assign `.module`.
-    You may also want to override `.norm_inputs()` to account for
-    extra input dimensions. The base class implementation assumes that
-    the first two dimensions are for flux and error.
 
     The output is either 1-d or 2-d:
     - 0th index is -ln(uu), so u = exp(-output[0])
@@ -28,14 +25,16 @@ class UncleModel(torch.nn.Module):
 
     Parameters
     ----------
-    d_input : int
-        Number of input dimensions, at least two (first parameters are flux and
-        err).
+    input_names : list of str
+        Names of input dimensions, used for defining normalizers and for the
+        dimensionality of the first model layer.
     d_output : int
         Number of output parameters, 1 for u, 2 for [u, l].
     """
 
     module: torch.nn.Module
+
+    available_normalizers = ["flux", "err"]
 
     norm_flux_scale_mag = 23.0
     norm_flux_max_mag = 14.0
@@ -43,16 +42,28 @@ class UncleModel(torch.nn.Module):
     norm_err_lgmin = -1.0
     norm_err_lgmax = 4.0
 
-    def __init__(self, *, d_input: int, d_output: int) -> None:
+    def __init__(self, *, input_names: Sequence[str] = ("flux", "err"), d_output: int) -> None:
         super().__init__()
 
-        if d_input < 2:
-            raise ValueError("d_input must be >= 2")
-        self.d_input = d_input
+        self.input_names = list(input_names)
+        self.d_input = len(self.input_names)
+
         if d_output not in {1, 2}:
             raise ValueError("d_output must be 1 (for u) or 2 (for u and s)")
         self.d_output = d_output
         self.outputs_s = d_output == 2
+
+    @cached_property
+    def normalizers(self) -> dict[int, Callable]:
+        """Mapping from feature index to normalizer function"""
+        normalizers = {}
+        for avail_norm in self.available_normalizers:
+            try:
+                idx = self.input_names.index(avail_norm)
+            except ValueError:
+                continue
+            normalizers[idx] = getattr(self, f"norm_{avail_norm}")
+        return normalizers
 
     @cached_property
     def norm_flux_scale(self) -> torch.Tensor:
@@ -81,10 +92,9 @@ class UncleModel(torch.nn.Module):
 
     def norm_inputs(self, x: torch.Tensor) -> torch.Tensor:
         """Normalizes batch"""
-        normed = torch.empty_like(x)
-        normed[..., 0] = self.norm_flux(x[..., 0])
-        normed[..., 1] = self.norm_err(x[..., 1])
-        normed[..., 2:] = x[..., 2:]
+        normed = x.clone()
+        for idx, f in self.normalizers.items():
+            normed[..., idx] = f(x[..., idx])
         return normed
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -124,8 +134,9 @@ class MLPModel(UncleModel):
 
     Parameters
     ----------
-    d_input : int
-        Number of input parameters, e.g. length of theta
+    input_names : list of str
+        Names of input dimensions, used for defining normalizers and for the
+        dimensionality of the first model layer.
     d_middle : list of int
         Size of hidden module, e.g. [64, 32, 16]
     d_output : int
@@ -137,12 +148,12 @@ class MLPModel(UncleModel):
     def __init__(
         self,
         *,
-        d_input: int,
+        input_names: Sequence[str] = ("flux", "err"),
         d_middle: Sequence[int] = (300, 300, 400),
         d_output: int = 1,
         dropout: None | float = None,
     ):
-        super().__init__(d_input=d_input, d_output=d_output)
+        super().__init__(input_names=input_names, d_output=d_output)
         self.d_middle = list(d_middle)
         self.dropout = dropout
 
@@ -162,14 +173,15 @@ class LinearModel(UncleModel):
 
     Parameters
     ----------
-    d_input : int
-        Number of input parameters, at least two.
+    dinput_names : list of str
+        Names of input dimensions, used for defining normalizers and for the
+        dimensionality of the first model layer.
     d_output : int
         Number of output parameters, 1 for u, 2 for [u, l].
     """
 
-    def __init__(self, d_input: int, d_output: int) -> None:
-        super().__init__(d_input=d_input, d_output=d_output)
+    def __init__(self, *, input_names: Sequence[str] = ("flux", "err"), d_output: int) -> None:
+        super().__init__(input_names=input_names, d_output=d_output)
 
         self.module = torch.nn.Linear(self.d_input, self.d_output, bias=True)
 
@@ -179,16 +191,18 @@ class ConstantModel(UncleModel):
 
     Parameters
     ----------
-    d_input : int
-        Number of input parameters, at least two.
     d_output : int
         Number of output parameters, 1 for u, 2 for [u, l].
     """
 
-    def __init__(self, d_input: int, d_output: int) -> None:
-        super().__init__(d_input=d_input, d_output=d_output)
+    def __init__(self, d_output: int) -> None:
+        super().__init__(input_names=[], d_output=d_output)
 
         self.vector = torch.nn.Parameter(torch.zeros(self.d_output))
+
+    def norm_inputs(self, x: torch.Tensor) -> torch.Tensor:
+        """Normalizes batch, here we do nothing"""
+        return x
 
     def module(self, x: torch.Tensor) -> torch.Tensor:
         """Compute the output of the model"""

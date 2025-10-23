@@ -1,4 +1,5 @@
 from contextlib import nullcontext
+from pathlib import Path
 
 import pytest
 from dask.distributed import Client
@@ -48,3 +49,15 @@ def dask_client(request):
     """
     with get_dask_client(request.param) as client:
         yield client
+
+
+@pytest.fixture
+def test_data_root():
+    """Path of the test data root"""
+    return Path(__file__).parent.parent / "data"
+
+
+@pytest.fixture
+def dp1_root(test_data_root):
+    """Path of the test subset of DP1 data"""
+    return test_data_root / "dp1"

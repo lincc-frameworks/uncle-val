@@ -1,0 +1,19 @@
+#HATS catalog
+obs_collection=object_lc_5arcs
+dataproduct_type=margin
+hats_nrows=507
+hats_col_ra=coord_ra
+hats_col_dec=coord_dec
+hats_col_healpix=_healpix_29
+hats_col_healpix_order=29
+hats_primary_table_url=/sdf/data/rubin/shared/lsdb_commissioning/hats/v29_0_0/object_collection/object_lc
+hats_margin_threshold=5.0
+hats_npix_suffix=.parquet
+hats_order=11
+moc_sky_fraction=0.00056
+hats_builder=lsdb v0.6.7, hats v0.6.7
+hats_creation_date=2025-10-23T16:30UTC
+hats_estsize=28079
+hats_release_date=2025-08-22
+hats_version=v1.0
+hats_max_rows=10

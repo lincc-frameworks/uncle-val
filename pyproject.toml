@@ -20,8 +20,8 @@ dependencies = [
     "cityhash>=0.4.9",  # provides cityhash and farmhash
     "dask[distributed]",  # version from lsdb
     "hats",  # version from lsdb
-    "lsdb>=0.6.5,<0.7",
-    "nested-pandas",  # version from lsdb
+    "lsdb>=0.6.7,<0.7",
+    "nested-pandas",
     "numba>=0.62.1",
     "numpy>=2",
     "onnxscript>=0.5.3",

@@ -103,19 +103,32 @@ def _filter_variable_lcs(df, *, nested_flux_col, nested_err_col, var_detector):
 
 
 def _add_visit_info(df, *, lc_col, ccd_visits_path, ccd_visits_cols):
+    ordinal_idx_name = "__ordinal_idx_"
+    lsdb_idx_name = df.index.name
+    df_ordinal_idx = df.reset_index(drop=False).set_index(pd.RangeIndex(len(df), name=ordinal_idx_name))
+    # https://github.com/lincc-frameworks/nested-pandas/issues/391
+    flat_lc = df_ordinal_idx[lc_col].to_flat().reset_index(drop=False)
+
     visits = pd.read_parquet(ccd_visits_path, columns=ccd_visits_cols, dtype_backend="pyarrow")
-    flat_lc = df.explode(lc_col)
-    merged = pd.merge(
-        visits,
-        flat_lc,
-        how="right",
-        left_on=["visitId", "detectorId"],
-        right_on=["visit", "detector"],
-    ).drop(
-        # We keep detector fow now
-        columns=["visit", "visitId", "detectorId"],
+    merged = (
+        pd.merge(
+            visits,
+            flat_lc,
+            how="right",
+            left_on=["visitId", "detectorId"],
+            right_on=["visit", "detector"],
+        )
+        .drop(
+            # We keep detector only
+            columns=["visit", "visitId", "detectorId"],
+        )
+        .set_index(
+            ordinal_idx_name,
+        )
     )
-    df = df.drop(columns=lc_col).add_nested(merged, lc_col, how="inner")
+
+    df_ordinal_idx = df_ordinal_idx.drop(columns=lc_col).add_nested(merged, lc_col, how="inner")
+    df = df_ordinal_idx.reset_index(drop=True).set_index(lsdb_idx_name)
     return df
 
 
@@ -379,7 +392,7 @@ def dp1_catalog_multi_band(
     var_detector = get_combined_variability_detector(variability_detectors)
 
     ccd_visits_path = root / "public_parquet" / "ccd_visit.parquet"
-    ccd_visits_cols = ["visitId", "detectorId", "zenithDistance", "expTime", "seeing", "skyBg"]
+    ccd_visits_cols = ["visitId", "detectorId", "expTime", "seeing", "skyBg"]
 
     mapped_catalog = catalog.map_partitions(
         _process_partition_multi_band,

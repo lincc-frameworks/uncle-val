@@ -59,6 +59,39 @@ def detect_mag_amplitude(
 
 
 @njit
+def detect_flux_outlier(flux, err, n_err: float | None = None) -> bool:
+    """Detects variability by outlier detection
+
+    It checks for n_err-outliers are presented, e.g. a detection which is
+    n_err*err from median flux.
+
+    Parameters
+    ----------
+    flux : array, (n_src,)
+        Flux array.
+    err : array, (n_src,)
+        Error array.
+    n_err : float, default: 100.0
+        Error multiplier to use as a threshold.
+
+    Returns
+    -------
+    bool
+        `True` if the light curve is variable, `False` otherwise.
+    """
+    if n_err is None:
+        n_err = 100.0
+
+    n = len(flux)
+    if n < 2:
+        return False
+
+    outliers = np.abs(flux - np.median(flux)) > n_err * err
+    any_outliers = np.any(outliers)
+    return any_outliers
+
+
+@njit
 def detect_deviation_outlier(flux, err, n_sigma: float | None = None) -> bool:
     """Detects variability by outlier detection, in deviation space
 
@@ -163,7 +196,7 @@ def get_combined_variability_detector(
         If `None`, use all functions with default parameters.
     """
     if funcs is None:
-        funcs = (detect_mag_amplitude, detect_deviation_outlier, detect_autocorrelation)
+        funcs = (detect_mag_amplitude, detect_flux_outlier, detect_deviation_outlier, detect_autocorrelation)
 
     none_args = []
     for func in funcs:

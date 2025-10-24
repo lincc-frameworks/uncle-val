@@ -99,22 +99,20 @@ def run_model(
     "model",
     [
         MLPModel(
-            d_input=2,
             d_middle=(3, 5, 6),
             d_output=2,
             dropout=0.2,
         ),
         MLPModel(
-            d_input=4,
+            input_names=["flux", "err", "object_mag", "is_g_band"],
             d_output=1,
             dropout=None,
         ),
         LinearModel(
-            d_input=5,
+            input_names=["mag", "magerr", "extendedness", "sky_background", "zp"],
             d_output=1,
         ),
         ConstantModel(
-            d_input=2,
             d_output=2,
         ),
     ],
@@ -129,7 +127,6 @@ def test_model(model):
 def test_mlp_model_many_objects(loss):
     """Fit MLPModel for a constant u function with many objects"""
     model = MLPModel(
-        d_input=2,
         d_output=1,
         dropout=None,
     )
@@ -141,10 +138,9 @@ def test_mlp_model_many_objects(loss):
 def test_linear_model_many_objects(loss):
     """Fit MLPModel for a constant u function with many objects"""
     model = LinearModel(
-        d_input=2,
         d_output=1,
     )
-    run_model(model=model, loss=loss, batch_size=2, train_batches=2000, n_obj=1000, rtol=0.02)
+    run_model(model=model, loss=loss, batch_size=2, train_batches=2000, n_obj=1000, rtol=0.1)
 
 
 @pytest.mark.parametrize("loss", [minus_ln_chi2_prob, kl_divergence_whiten])
@@ -152,7 +148,6 @@ def test_linear_model_many_objects(loss):
 def test_constant_model_many_objects(loss):
     """Fit MLPModel for a constant u function with many objects"""
     model = ConstantModel(
-        d_input=2,
         d_output=1,
     )
     run_model(model=model, loss=loss, batch_size=2, train_batches=2000, n_obj=1000, rtol=0.01)

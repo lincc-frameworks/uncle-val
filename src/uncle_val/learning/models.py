@@ -7,6 +7,72 @@ import torch
 from uncle_val.utils.mag_flux import mag2flux
 
 
+class UncleScaler:
+    """Input data normalization for UncleModel"""
+
+    available_normalizers = {
+        "x": "norm_flux",
+        "flux": "norm_flux",
+        "err": "norm_err",
+        "expTime": "exp_time",
+        "skyBg": "sky_bg",
+    }
+
+    flux_scale_mag = 23.0
+    flux_max_mag = 14.0
+
+    err_lgmin = -1.0
+    err_lgmax = 4.0
+
+    exp_time_scale = 30.0
+
+    sky_bg_scale = 1e3
+
+    @cached_property
+    def flux_scale(self) -> torch.Tensor:
+        """Scale factor for flux normalization."""
+        return torch.tensor(mag2flux(self.flux_scale_mag))
+
+    @cached_property
+    def flux_amplitude(self) -> torch.Tensor:
+        """Amplitude factor for flux normalization."""
+        norm_flux_max = torch.tensor(mag2flux(self.flux_max_mag))
+        return 1.0 / torch.arcsinh(norm_flux_max / self.flux_scale)
+
+    def norm_flux(self, flux: torch.Tensor) -> torch.Tensor:
+        """Normalize flux."""
+        return torch.arcsinh(flux / self.flux_scale) * self.flux_amplitude
+
+    @cached_property
+    def err_lgrange(self) -> torch.Tensor:
+        """Min-max range for decimal logarithm of error, for normalization."""
+        return torch.tensor(self.err_lgmax - self.err_lgmin)
+
+    def norm_err(self, err: torch.Tensor) -> torch.Tensor:
+        """Normalize flux error."""
+        lg_err = torch.log10(err)
+        return (lg_err - self.err_lgmin) / self.err_lgrange
+
+    def norm_exp_time(self, exp_time: torch.Tensor) -> torch.Tensor:
+        """Normalize exposure time."""
+        return torch.log10(exp_time / self.exp_time_scale)
+
+    def norm_sky_bg(self, sky_bg: torch.Tensor) -> torch.Tensor:
+        """Normalize sky background."""
+        return torch.log10(sky_bg / self.sky_bg_scale)
+
+    def normalizers(self, input_names) -> dict[int, Callable]:
+        """Mapping from feature index to normalizer function."""
+        normalizers = {}
+        for avail, method_name in self.available_normalizers.items():
+            try:
+                idx = input_names.index(avail)
+            except ValueError:
+                continue
+            normalizers[idx] = getattr(self, method_name)
+        return normalizers
+
+
 class UncleModel(torch.nn.Module):
     """Base class for u-function learning
 
@@ -34,72 +100,29 @@ class UncleModel(torch.nn.Module):
 
     module: torch.nn.Module
 
-    available_normalizers = ["flux", "err"]
-
-    norm_flux_scale_mag = 23.0
-    norm_flux_max_mag = 14.0
-
-    norm_err_lgmin = -1.0
-    norm_err_lgmax = 4.0
-
     def __init__(self, *, input_names: Sequence[str] = ("flux", "err"), d_output: int) -> None:
         super().__init__()
 
         self.input_names = list(input_names)
         self.d_input = len(self.input_names)
+        self.scaler = UncleScaler()
+        self.normalizers = self.scaler.normalizers(self.input_names)
 
         if d_output not in {1, 2}:
             raise ValueError("d_output must be 1 (for u) or 2 (for u and s)")
         self.d_output = d_output
         self.outputs_s = d_output == 2
 
-    @cached_property
-    def normalizers(self) -> dict[int, Callable]:
-        """Mapping from feature index to normalizer function"""
-        normalizers = {}
-        for avail_norm in self.available_normalizers:
-            try:
-                idx = self.input_names.index(avail_norm)
-            except ValueError:
-                continue
-            normalizers[idx] = getattr(self, f"norm_{avail_norm}")
-        return normalizers
-
-    @cached_property
-    def norm_flux_scale(self) -> torch.Tensor:
-        """Scale factor for flux normalization."""
-        return torch.tensor(mag2flux(self.norm_flux_scale_mag))
-
-    @cached_property
-    def norm_flux_amplitude(self) -> torch.Tensor:
-        """Amplitude factor for flux normalization."""
-        norm_flux_max = torch.tensor(mag2flux(self.norm_flux_max_mag))
-        return 1.0 / torch.arcsinh(norm_flux_max / self.norm_flux_scale)
-
-    def norm_flux(self, flux: torch.Tensor) -> torch.Tensor:
-        """Normalize flux."""
-        return torch.arcsinh(flux / self.norm_flux_scale) * self.norm_flux_amplitude
-
-    @cached_property
-    def norm_err_lgrange(self) -> torch.Tensor:
-        """Min-max range for decimal logarithm of error, for normalization."""
-        return torch.tensor(self.norm_err_lgmax - self.norm_err_lgmin)
-
-    def norm_err(self, err: torch.Tensor) -> torch.Tensor:
-        """Normalize flux error."""
-        lg_err = torch.log10(err)
-        return (lg_err - self.norm_err_lgmin) / self.norm_flux_scale
-
-    def norm_inputs(self, x: torch.Tensor) -> torch.Tensor:
+    def norm_inputs(self, inputs: torch.Tensor) -> torch.Tensor:
         """Normalizes batch"""
-        normed = x.clone()
+        normed = inputs.clone()
         for idx, f in self.normalizers.items():
-            normed[..., idx] = f(x[..., idx])
+            normed[..., idx] = f(inputs[..., idx])
         return normed
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         """Compute the output of the model"""
-        output = self.module(self.norm_inputs(x))
+        output = self.module(self.norm_inputs(inputs))
         # u, uncertainty underestimation
         output[..., 0] = torch.exp(-output[..., 0])
         # s, flux shift
@@ -159,7 +182,7 @@ class MLPModel(UncleModel):
 
         layers = []
         dims = [self.d_input] + self.d_middle + [self.d_output]
-        for i, (d1, d2) in enumerate(zip(dims[:-1], dims[1:], strict=False)):
+        for i, (d1, d2) in enumerate(zip(dims[:-1], dims[1:], strict=True)):
             layers.append(torch.nn.Linear(d1, d2))
             if i < len(dims) - 2:  # not the last layer
                 layers.append(torch.nn.GELU())
@@ -200,11 +223,11 @@ class ConstantModel(UncleModel):
 
         self.vector = torch.nn.Parameter(torch.zeros(self.d_output))
 
-    def norm_inputs(self, x: torch.Tensor) -> torch.Tensor:
-        """Normalizes batch, here we do nothing"""
-        return x
+    def norm_inputs(self, inputs: torch.Tensor) -> torch.Tensor:
+        """Normalizes batch, here we do nothing because we don't use inputs"""
+        return inputs
 
-    def module(self, x: torch.Tensor) -> torch.Tensor:
+    def module(self, inputs: torch.Tensor) -> torch.Tensor:
         """Compute the output of the model"""
-        shape = x.shape[:-1]
+        shape = inputs.shape[:-1]
         return self.vector.repeat(*shape, 1)

@@ -17,10 +17,11 @@ def run_dp1_linear_flux_err(
     n_src: int,
     n_lcs: int,
     train_batch_size: int,
+    val_batch_size: int,
     output_root: str | Path,
     loss_fn: Callable | None = None,
     start_tfboard: bool = False,
-    val_batch_over_train: int = 128,
+    snapshot_every: int = 128,
     device: str | torch.device = "cpu",
 ) -> Path:
     """Run the training for DP1 with the linear model on fluxes and errors
@@ -41,8 +42,10 @@ def run_dp1_linear_flux_err(
         Number of light curves to train on.
     train_batch_size : int
         Batch size for training.
-    val_batch_over_train : int
-        Ratio of batch sizes for training and validation.
+    val_batch_size : int or None
+        Batch size for validation.
+    snapshot_every : int
+        Snapshot model and metrics every this much training batches.
     loss_fn : Callable or None
         Loss function to use, by default soften Χ² is used.
     start_tfboard : bool
@@ -84,7 +87,8 @@ def run_dp1_linear_flux_err(
         n_src=n_src,
         n_lcs=n_lcs,
         train_batch_size=train_batch_size,
-        val_batch_over_train=val_batch_over_train,
+        val_batch_size=val_batch_size,
+        snapshot_every=snapshot_every,
         output_root=output_root,
         device=device,
         start_tfboard=start_tfboard,

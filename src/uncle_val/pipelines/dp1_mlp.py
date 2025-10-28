@@ -15,10 +15,11 @@ def run_dp1_mlp(
     n_src: int,
     n_lcs: int,
     train_batch_size: int,
+    val_batch_size: int,
     output_root: str | Path,
     loss_fn: Callable | None = None,
     start_tfboard: bool = False,
-    val_batch_over_train: int = 128,
+    snapshot_every: int = 128,
     device: torch.device | str = "cpu",
 ) -> tuple[Path, list[str]]:
     """Run the training for DP1 with the linear model on fluxes and errors
@@ -39,10 +40,12 @@ def run_dp1_mlp(
         Number of light curves to train on.
     train_batch_size : int
         Batch size for training.
+    val_batch_size : int or None
+        Batch size for validation.
     output_root : str or Path
         Where to save the intermediate results.
-    val_batch_over_train : int
-        Ratio of batch sizes for training and validation.
+    snapshot_every : int
+        Snapshot model and metrics every this much training batches.
     loss_fn : Callable or None
         Loss function to use, by default soften Χ² is used.
     start_tfboard : bool
@@ -71,19 +74,20 @@ def run_dp1_mlp(
     columns = ["lc.x", "lc.err", "extendedness"] + [f"is_{band}_band" for band in bands]
     columns_no_prefix = [col.removeprefix("lc.") for col in columns]
 
-    model = MLPModel(d_input=len(columns), d_middle=(300, 300, 500), dropout=None, d_output=1)
+    model = MLPModel(d_input=len(columns), d_middle=(30, 30, 50), dropout=None, d_output=1)
 
     model_path = training_loop(
         catalog=catalog,
         columns=columns_no_prefix,
         model=model,
         loss_fn=loss_fn,
-        lr=1e-5,
+        lr=1e-4,
         n_workers=n_workers,
         n_src=n_src,
         n_lcs=n_lcs,
         train_batch_size=train_batch_size,
-        val_batch_over_train=val_batch_over_train,
+        val_batch_size=val_batch_size,
+        snapshot_every=snapshot_every,
         output_root=output_root,
         start_tfboard=start_tfboard,
         device=device,

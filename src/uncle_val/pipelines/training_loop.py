@@ -1,3 +1,4 @@
+import shutil
 from collections.abc import Callable
 from datetime import datetime
 from functools import partial
@@ -5,6 +6,7 @@ from pathlib import Path
 from warnings import catch_warnings, filterwarnings
 
 import lsdb
+import numpy as np
 import torch
 from dask.distributed import Client
 from torch.optim import Adam
@@ -17,6 +19,7 @@ from uncle_val.learning.models import UncleModel
 from uncle_val.learning.training import evaluate_loss, train_step
 from uncle_val.pipelines.splits import TRAIN_SPLIT, VALIDATION_SPLIT
 from uncle_val.pipelines.utils import _launch_tfboard
+from uncle_val.pipelines.validation_set_utils import ValidationDataLoaderContext
 
 
 def training_loop(
@@ -28,7 +31,8 @@ def training_loop(
     n_src: int,
     n_lcs: int,
     train_batch_size: int,
-    val_batch_over_train: int,
+    val_batch_size: int,
+    snapshot_every: int,
     loss_fn: Callable | None,
     lr: float,
     start_tfboard: bool,
@@ -53,9 +57,11 @@ def training_loop(
     n_lcs : int
         Number of light curves to train on.
     train_batch_size : int
-        Batch size for training.
-    val_batch_over_train : int
-        Ratio of batch sizes for training and validation.
+        Batch size for training set.
+    val_batch_size : int
+        Batch size for validation set.
+    snapshot_every : int
+        Snapshot model and metrics every this many training batches.
     loss_fn : Callable or None
         Loss function to use, by default soften Χ² is used.
     lr : float
@@ -74,17 +80,13 @@ def training_loop(
     Path
         Path to the output model.
     """
-    output_dir = Path(output_root) / datetime.now().strftime("%Y-%m-%d_%H-%M")
-    epoch_model_dir = output_dir / "models"
-    epoch_model_dir.mkdir(parents=True, exist_ok=True)
-
-    validation_batch_size = val_batch_over_train * train_batch_size
-    n_validation_batches = n_lcs // validation_batch_size
+    n_train_batches = int(np.ceil(n_lcs / train_batch_size))
 
     output_root = Path(output_root)
     output_dir = Path(output_root) / datetime.now().strftime("%Y-%m-%d_%H-%M")
-    epoch_model_dir = output_dir / "models"
-    epoch_model_dir.mkdir(parents=True, exist_ok=True)
+    intermediate_model_dir = output_dir / "models"
+    intermediate_model_dir.mkdir(parents=True, exist_ok=True)
+    tmp_validation_dir = output_dir / "validation"
 
     if loss_fn is None:
         loss_fn = partial(minus_ln_chi2_prob, soft=20)
@@ -103,7 +105,19 @@ def training_loop(
             # LSDB complains that we return a series, not a dataframe, from map_partitions
             filterwarnings("ignore", category=RuntimeWarning, module="lsdb.*")
 
-            training_dataset = iter(
+            validation_dataset_lsdb = LSDBIterableDataset(
+                catalog=catalog,
+                columns=columns,
+                client=client,
+                batch_lc=val_batch_size,
+                n_src=n_src,
+                partitions_per_chunk=n_workers * 8,
+                loop=False,
+                hash_range=VALIDATION_SPLIT,
+                seed=1,
+                device=device,
+            )
+            training_dataset_iter = iter(
                 LSDBIterableDataset(
                     catalog=catalog,
                     columns=columns,
@@ -117,29 +131,45 @@ def training_loop(
                     device=device,
                 )
             )
-            validation_dataset = iter(
-                LSDBIterableDataset(
-                    catalog=catalog,
-                    columns=columns,
-                    client=client,
-                    batch_lc=validation_batch_size,
-                    n_src=n_src,
-                    partitions_per_chunk=n_workers * 8,
-                    loop=True,
-                    hash_range=VALIDATION_SPLIT,
-                    seed=0,
-                    device=device,
-                )
-            )
 
-        val_tqdm = tqdm(range(n_validation_batches), desc="Validation batches")
-        for val_step, val_batch in zip(val_tqdm, validation_dataset, strict=False):
-            sum_train_loss = torch.tensor(0.0).to(device)
-            sum_grad_norm = torch.tensor(0.0).to(device)
-            model.train()
-            for _i_train_batch, train_batch in zip(
-                range(val_batch_over_train), training_dataset, strict=False
+        with ValidationDataLoaderContext(validation_dataset_lsdb, tmp_validation_dir) as val_dataloader:
+            best_val_loss = torch.tensor(float("inf"), device=device)
+            best_model_path = None
+
+            sum_train_loss = torch.tensor(float("inf"), device=device)
+            sum_grad_norm = torch.tensor(float("inf"), device=device)
+
+            def snapshot(i):
+                nonlocal best_val_loss, best_model_path, sum_train_loss, sum_grad_norm
+
+                model.eval()
+                sum_val_loss = torch.tensor(0.0).to(device)
+                for val_batch in val_dataloader:
+                    sum_val_loss += evaluate_loss(
+                        model=model,
+                        loss=loss_fn,
+                        batch=val_batch,
+                    )
+                summary_writer.add_scalar("Sum validation loss", sum_val_loss, i)
+
+                summary_writer.add_scalar("Sum train loss", sum_train_loss, i)
+                summary_writer.add_scalar("Sum grad norm", sum_grad_norm, i)
+                sum_train_loss = torch.tensor(0.0).to(device)
+                sum_grad_norm = torch.tensor(0.0).to(device)
+
+                current_model_path = intermediate_model_dir / f"{model_name}_{i:09d}.pt"
+                torch.save(model, current_model_path)
+                if sum_val_loss < best_val_loss:
+                    best_val_loss = sum_val_loss
+                    best_model_path = current_model_path
+                model.train()
+
+            for i_train_batch, train_batch in zip(
+                tqdm(range(n_train_batches), desc="Training batch"), training_dataset_iter, strict=False
             ):
+                if i_train_batch == 0:
+                    snapshot(i_train_batch)
+
                 train_loss = train_step(
                     model=model,
                     optimizer=optimizer,
@@ -147,24 +177,19 @@ def training_loop(
                     batch=train_batch,
                 )
                 sum_train_loss += train_loss.detach()
-                grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), float("inf"))
-                sum_grad_norm += grad_norm
+                sum_grad_norm += torch.nn.utils.clip_grad_norm_(model.parameters(), float("inf"))
 
-            model.eval()
-            validation_loss = evaluate_loss(
-                model=model,
-                loss=loss_fn,
-                batch=val_batch,
-            )
-
-            summary_writer.add_scalar("Sum train loss", sum_train_loss, val_step)
-            summary_writer.add_scalar("Validation loss", validation_loss, val_step)
-            summary_writer.add_scalar("Mean grad norm", sum_grad_norm / val_batch_over_train, val_step)
-            torch.save(model, epoch_model_dir / f"{model_name}_{val_step:06d}.pt")
+                if (
+                    i_train_batch % snapshot_every == 0 or i_train_batch == n_train_batches - 1
+                ) and i_train_batch > 0:
+                    snapshot(i_train_batch)
 
     model.eval()
     summary_writer.add_graph(model, train_batch[0])
+
+    if best_model_path is None:
+        raise RuntimeError("Model hasn't trained yet?")
     model_path = output_dir / f"{model_name}.pt"
-    torch.save(model, model_path)
+    shutil.copy(best_model_path, model_path)
 
     return model_path

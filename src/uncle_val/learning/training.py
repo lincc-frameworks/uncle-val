@@ -1,26 +1,25 @@
-from collections.abc import Callable
-
 from torch import Tensor
 from torch.optim import Optimizer
 
+from uncle_val.learning.losses import UncleLoss
 from uncle_val.learning.models import UncleModel
 
 
 def train_step(
     *,
-    model: UncleModel,
     optimizer: Optimizer,
-    loss: Callable[[Tensor, Tensor], Tensor],
+    model: UncleModel,
+    loss: UncleLoss,
     batch: Tensor,
 ) -> Tensor:
     """Training step on a single light curve.
 
     Parameters
     ----------
-    model : UncleModel
-        Model to train, input vector size is d_input.
     optimizer : torch.optim.Optimizer
         Optimizer to use for training
+    model : UncleModel
+        Model to train, input vector size is d_input.
     loss : callable, udf(flux, err) -> loss_value
         Loss function to call on corrected fluxes and errors.
     batch : torch.Tensor, (n_batch, n_obj, n_features]
@@ -50,7 +49,7 @@ def train_step(
 def evaluate_loss(
     *,
     model: UncleModel,
-    loss: Callable[[Tensor, Tensor], Tensor],
+    loss: UncleLoss,
     batch: Tensor,
 ):
     """Evaluate and return loss"""
@@ -67,6 +66,6 @@ def evaluate_loss(
     else:
         corrected_flux = flux
 
-    values = loss(corrected_flux, corrected_err)
+    values = loss(corrected_flux, corrected_err, model_output)
 
     return values

@@ -1,4 +1,6 @@
+from abc import ABC, abstractmethod
 from functools import partial
+from typing import Literal
 
 import torch
 from torch import Tensor
@@ -7,7 +9,63 @@ from torch.distributions.chi2 import Chi2
 from uncle_val.whitening import whiten_data
 
 
-def _residuals_lc(flux: torch.Tensor, err: torch.Tensor) -> torch.Tensor:
+class UncleLoss(ABC):
+    """Base class for loss functions
+
+    Parameters
+    ----------
+    lmbd : float | None
+        Penalty term factor for Tikhonov regularization. None means no
+        Tikhonov regularization.
+    """
+
+    def __init__(self, *, lmbd: float | None):
+        self.lmbd = lmbd
+
+    @abstractmethod
+    def penalty_scale_factor(self, shape) -> Tensor:
+        """Multiplication factor to use with penalty loss."""
+        raise NotImplementedError
+
+    def penalty_term(self, input_shape: Tensor, model_outputs: Tensor) -> Tensor:
+        """Compute loss term based on output vector"""
+        if self.lmbd is None:
+            return torch.zeros_like(model_outputs.flatten()[0])
+        norm_outputs = torch.linalg.norm(model_outputs, dim=-1)
+        mean_norm = torch.mean(norm_outputs)
+        return self.lmbd * self.penalty_scale_factor(input_shape) * mean_norm
+
+    @abstractmethod
+    def lc_term(self, flux: Tensor, err: Tensor) -> Tensor:
+        """Compute loss term based on light curve"""
+        raise NotImplementedError
+
+    def __call__(self, flux: Tensor, err: Tensor, model_outputs: Tensor) -> Tensor:
+        """Compute loss"""
+        if self.lmbd is None:
+            return self.lc_term(flux, err)
+        return self.lc_term(flux, err) + self.penalty_term(flux.shape, model_outputs)
+
+
+class SoftenLoss(UncleLoss, ABC):
+    """Base class for soften loss functions
+
+    Parameters
+    ----------
+    lmbd : float | None
+        Penalty term factor for Tikhonov regularization. None means no
+        Tikhonov regularization.
+    soft : float | None
+         Softness factor for the light-curve loss term. None means no
+         softening.
+    """
+
+    def __init__(self, *, lmbd: float | None, soft: float | None):
+        super().__init__(lmbd=lmbd)
+        self.soft = soft
+
+
+def _residuals_lc(flux: Tensor, err: Tensor) -> Tensor:
     """Residuals for a single light curve
 
     residuals = (flux - avg_flux) / err,
@@ -32,94 +90,321 @@ def _residuals_lc(flux: torch.Tensor, err: torch.Tensor) -> torch.Tensor:
     return residuals
 
 
-def _chi2_lc(flux: torch.Tensor, err: torch.Tensor, *, soft: float | None) -> torch.Tensor:
-    """chi2 for a single light curve
+class Chi2BasedLoss(SoftenLoss, ABC):
+    """Abstract class for chi2 log probability losses
 
     Parameters
     ----------
-    flux : torch.Tensor
-        Flux vector, (n_src,)
-    err : torch.Tensor
-        Error vector, (n_src,)
-    soft : float or None
-        Softness parameter or no softness (`None`).
-
-    Returns
-    -------
-    jnp.ndarray, of shape ()
-        chi2 value
+    lmbd : float | None
+        Penalty term factor for Tikhonov regularization. None means no
+        Tikhonov regularization.
+    soft : float | None
+         Softness factor for the light-curve loss term. None means no
+         softening.
     """
-    residuals = _residuals_lc(flux, err)
-    if soft:
-        residuals = soft * torch.tanh(residuals / soft)
 
-    chi2 = torch.sum(torch.square(residuals))
-    return chi2
+    def __init__(self, *, lmbd: float | None, soft: float | None):
+        super().__init__(lmbd=lmbd, soft=soft)
+        self.chi2_func = torch.vmap(self._chi2_lc)
+
+    def _chi2_lc(self, flux: Tensor, err: Tensor) -> Tensor:
+        """chi2 for a single light curve
+
+        Parameters
+        ----------
+        flux : torch.Tensor
+            Flux vector, (n_src,)
+        err : torch.Tensor
+            Error vector, (n_src,)
+
+        Returns
+        -------
+        jnp.ndarray, of shape ()
+            chi2 value
+        """
+        residuals = _residuals_lc(flux, err)
+        if self.soft is not None:
+            residuals = self.soft * torch.tanh(residuals / self.soft)
+
+        chi2 = torch.sum(torch.square(residuals))
+        return chi2
+
+    @abstractmethod
+    def _degrees_of_freedom(self, shape) -> Tensor:
+        raise NotImplementedError
+
+    def _chi2_distr(self, shape) -> Chi2:
+        dof = self._degrees_of_freedom(shape)
+        distr = Chi2(dof)
+        return distr
+
+    def penalty_scale_factor(self, shape) -> Tensor:
+        """Multiplication factor to use with penalty loss."""
+        dof = self._degrees_of_freedom(shape)
+        distr = self._chi2_distr(shape)
+        return distr.log_prob(dof)
 
 
-def minus_ln_chi2_prob(flux: torch.Tensor, err: torch.Tensor, *, soft: float | None = None) -> torch.Tensor:
+class MinusLnChi2ProbTotal(Chi2BasedLoss):
     """-ln(prob(chi2)) for chi2 computed for given light curves and model.
 
-    Parameters
-    ----------
-    flux : torch.Tensor
-        Corrected flux vector, (n_batch, n_src,)
-    err : torch.Tensor
-        Corrected error vector, (n_batch, n_src,)
-    soft : float or None
-        If `None` (default) does not soft the data. If a float, use it as
-        a growth rate for a sigmoid function (tanh) softening residuals.
-        It is a cap for the absolute value, a typical value to use is 20.
-
-    Returns
-    -------
-    torch.Tensor, of shape ()
-        Loss value
-    """
-    chi2_func = torch.vmap(partial(_chi2_lc, soft=soft))
-    chi2_batch = chi2_func(flux, err)
-    chi2 = torch.sum(chi2_batch)
-
-    # "compile-time" values
-    n_light_curves = torch.prod(torch.tensor(flux.shape[:-1]))
-    n_obs_total = torch.prod(torch.tensor(flux.shape))
-    degrees_of_freedom = n_obs_total - n_light_curves
-    distr = Chi2(degrees_of_freedom)
-
-    lnprob = distr.log_prob(chi2)
-    return -lnprob
-
-
-def kl_divergence_whiten(flux: Tensor, err: Tensor, *, soft: float | None = None) -> Tensor:
-    """KL(N(μ, σ²)|N(0,1)) where μ and σ are for the whiten light curves
-
-    KL(N(μ, σ²)|N(0,1)) = 1/2 [μ² + σ² - ln σ² - 1]
+    This class combines all light curves together for a single Chi2 value.
 
     Parameters
     ----------
-    flux : torch.Tensor
-        Corrected flux vector, (n_batch, n_src,)
-    err : jnp.ndarray
-        Corrected error vector, (n_batch, n_src,)
-    soft : float or None
-        If `None` (default) does not soft the data. If a float, use it as
-        a growth rate for a sigmoid function (tanh) softening whiten signal.
-        It is a cap for the absolute value, a typical value to use is 20.
-
-    Returns
-    -------
-    torch.Tensor, of shape ()
-        Loss value
+    lmbd : float | None
+        Penalty term factor for Tikhonov regularization. None means no
+        Tikhonov regularization.
+    soft : float | None
+         Softness factor for the light-curve loss term. None means no
+         softening.
     """
-    whiten_func = torch.vmap(partial(whiten_data, np=torch))
-    z = whiten_func(flux, err**2)
 
-    if soft is not None:
-        z = soft * torch.tanh(z / soft)
+    def __init__(self, *, lmbd: float | None, soft: float | None):
+        super().__init__(lmbd=lmbd, soft=soft)
 
-    mu_z = torch.mean(z)
-    # ddof is always 1 (not number of light curves), because "target" mu=0 for all whiten data points
-    var_z = torch.var(z, correction=1)
-    # https://en.wikipedia.org/wiki/Kullback–Leibler_divergence#Multivariate_normal_distributions
-    kl = 0.5 * (mu_z**2 + var_z - torch.log(var_z) - 1.0)
-    return kl
+    def _degrees_of_freedom(self, shape) -> Tensor:
+        n_light_curves = torch.prod(torch.tensor(shape[:-1]))
+        n_obs_total = torch.prod(torch.tensor(shape))
+        return n_obs_total - n_light_curves
+
+    def lc_term(self, flux: Tensor, err: Tensor) -> Tensor:
+        """Get the loss
+
+        Parameters
+        ----------
+        flux : torch.Tensor
+            Corrected flux vector, (n_batch, n_src,)
+        err : torch.Tensor
+            Corrected error vector, (n_batch, n_src,)
+
+        Returns
+        -------
+        torch.Tensor, of shape ()
+            Loss value
+        """
+        chi2_batch = self.chi2_func(flux, err)
+        chi2 = torch.sum(chi2_batch)
+        distr = self._chi2_distr(flux.shape)
+        lnprob = distr.log_prob(chi2)
+        return -lnprob
+
+
+class MinusLnChi2ProbLc(Chi2BasedLoss):
+    """-ln(prob(chi2)) for chi2 computed for given light curves and model.
+
+    This class combines all light curves together for a single Chi2 value.
+
+    Parameters
+    ----------
+    lmbd : float | None
+        Penalty term factor for Tikhonov regularization. None means no
+        Tikhonov regularization.
+    soft : float | None
+         Softness factor for the light-curve loss term. None means no
+         softening.
+    """
+
+    def __init__(self, *, lmbd: float | None, soft: float | None):
+        super().__init__(lmbd=lmbd, soft=soft)
+
+    def _degrees_of_freedom(self, shape) -> Tensor:
+        n_obs_per_lc = shape[-1]
+        return n_obs_per_lc - 1
+
+    def lc_term(self, flux: Tensor, err: Tensor) -> Tensor:
+        """Get the loss
+
+        Parameters
+        ----------
+        flux : torch.Tensor
+            Corrected flux vector, (n_batch, n_src,)
+        err : torch.Tensor
+            Corrected error vector, (n_batch, n_src,)
+
+        Returns
+        -------
+        torch.Tensor, of shape ()
+            Loss value
+        """
+        chi2_batch = self.chi2_func(flux, err)
+        distr = self._chi2_distr(flux.shape)
+        lnprob = distr.log_prob(chi2_batch)
+        mean_lnprob = torch.mean(lnprob)
+        return -mean_lnprob
+
+
+def minus_ln_chi2_prob_loss(
+    *, lmbd: float | None, soft: float | None, kind: Literal["accum"] | Literal["mean"]
+) -> Chi2BasedLoss:
+    """Construct a -ln(prob(Chi2)) loss object.
+
+    Parameters
+    ----------
+    lmbd : float | None
+        Penalty term factor for Tikhonov regularization. None means no
+        Tikhonov regularization.
+    soft : float | None
+        Softness parameter or no softness (`None`).
+    kind : Literal['accum', 'mean']
+        How to compute the loss for multiple light curves:
+        - 'accum': sum per-light-curve Chi^2 values and compute a single
+          log-probability value.
+        - 'mean': compute log-prob per light curve and average them.
+    """
+    match kind:
+        case "accum":
+            return MinusLnChi2ProbTotal(lmbd=lmbd, soft=soft)
+        case "mean":
+            return MinusLnChi2ProbLc(lmbd=lmbd, soft=soft)
+    raise ValueError(f"Unknown loss kind: {kind}")
+
+
+class KLWhitenBasedLoss(SoftenLoss, ABC):
+    """Base class for KLdivergence based losses.
+
+    Parameters
+    ----------
+    lmbd : float | None
+        Penalty term factor for Tikhonov regularization. None means no
+        Tikhonov regularization.
+    soft : float | None
+         Softness factor for the light-curve loss term. None means no
+         softening.
+    """
+
+    def __init__(self, *, lmbd: float | None, soft: float | None):
+        super().__init__(lmbd=lmbd, soft=soft)
+        self.whiten_func = torch.vmap(partial(whiten_data, np=torch))
+
+    def penalty_scale_factor(self, shape) -> Tensor:
+        """Multiplication factor to use with penalty loss."""
+        return torch.tensor(1)
+
+    def compute_z(self, flux: Tensor, err: Tensor) -> Tensor:
+        """Compute the whiten values and soften them if needed
+
+        Parameters
+        ----------
+        flux : torch.Tensor
+            Corrected flux vector, (n_batch, n_src,)
+        err : jnp.ndarray
+            Corrected error vector, (n_batch, n_src,)
+
+        Returns
+        -------
+        torch.Tensor, of shape (n_batch, n_src,)
+            Soften whiten sources
+        """
+        z = self.whiten_func(flux, err**2)
+
+        if self.soft is None:
+            return z
+        return self.soft * torch.tanh(z / self.soft)
+
+    @staticmethod
+    def compute_kl(mu: Tensor, var: Tensor) -> Tensor:
+        """Compute KL divergence between N(mu, var) and N(0,1)
+
+        # https://en.wikipedia.org/wiki/Kullback–Leibler_divergence#Multivariate_normal_distributions
+
+        Parameters
+        ----------
+        mu : torch.Tensor
+            Mean vector
+        var : torch.Tensor
+            Unbiased variance vector
+
+        Returns
+        -------
+        torch.Tensor
+            KL divergence between N(mu, var) and N(0,1)
+        """
+        return 0.5 * (torch.square(mu) + var - torch.log(var) - 1.0)
+
+
+class KLWhitenTotal(KLWhitenBasedLoss):
+    """KL divergence between all whiten sources and standard distribution
+
+    KL(N(μ, σ²)|N(0,1)) where μ and σ are for the whiten light curves
+
+    KL(N(μ, σ²)|N(0,1)) = 1/2 [μ² + σ² - ln σ² - 1]"""
+
+    def lc_term(self, flux: Tensor, err: Tensor) -> Tensor:
+        """Compute the loss
+
+        Parameters
+        ----------
+        flux : torch.Tensor
+            Corrected flux vector, (n_batch, n_src,)
+        err : jnp.ndarray
+            Corrected error vector, (n_batch, n_src,)
+
+        Returns
+        -------
+        torch.Tensor, of shape ()
+            Loss value
+        """
+        z = self.compute_z(flux, err)
+        mu_z = torch.mean(z)
+        # ddof is always 1 (not number of light curves), because "target" mu is shared for all of them
+        var_z = torch.var(z, correction=1)
+        # https://en.wikipedia.org/wiki/Kullback–Leibler_divergence#Multivariate_normal_distributions
+        kl = self.compute_kl(mu_z, var_z)
+        return kl
+
+
+class KLWhitenLc(KLWhitenBasedLoss):
+    """Mean of KL divergences between per-lc whiten sources and N(0, 1)
+
+    KL(N(μ, σ²)|N(0,1)) where μ and σ are for the whiten light curves
+
+    KL(N(μ, σ²)|N(0,1)) = 1/2 [μ² + σ² - ln σ² - 1]"""
+
+    def lc_term(self, flux: Tensor, err: Tensor) -> Tensor:
+        """Compute the loss
+
+        Parameters
+        ----------
+        flux : torch.Tensor
+            Corrected flux vector, (n_batch, n_src,)
+        err : jnp.ndarray
+            Corrected error vector, (n_batch, n_src,)
+
+        Returns
+        -------
+        torch.Tensor, of shape ()
+            Loss value
+        """
+        z = self.compute_z(flux, err)
+        mu_z = torch.mean(z, dim=-1)
+        var_z = torch.var(z, correction=1, dim=-1)
+        kl = self.compute_kl(mu_z, var_z)
+        mean_kl = torch.mean(kl)
+        return mean_kl
+
+
+def kl_divergence_whiten_loss(
+    *, lmbd: float | None, soft: float | None, kind: Literal["accum"] | Literal["mean"]
+) -> KLWhitenBasedLoss:
+    """Construct an KL divergence loss object
+
+    Parameters
+    ----------
+    lmbd : float | None
+        Penalty term factor for Tikhonov regularization. None means no
+        Tikhonov regularization.
+    soft : float | None
+        Softness parameter or no softness (`None`).
+    kind : Literal['accum', 'mean']
+        How to compute the loss for multiple light curves:
+        - 'accum': use whiten sources from all light curves and compute the KL
+          divergence for it.
+        - 'mean': compute KL divergence per light curve and average them.
+    """
+    match kind:
+        case "accum":
+            return KLWhitenTotal(lmbd=lmbd, soft=soft)
+        case "mean":
+            return KLWhitenLc(lmbd=lmbd, soft=soft)
+    raise ValueError(f"Unknown loss kind: {kind}")

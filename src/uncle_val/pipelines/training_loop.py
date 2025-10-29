@@ -1,7 +1,5 @@
 import shutil
-from collections.abc import Callable
 from datetime import datetime
-from functools import partial
 from pathlib import Path
 from warnings import catch_warnings, filterwarnings
 
@@ -13,7 +11,7 @@ from torch.optim import Adam
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 
-from uncle_val.learning.losses import minus_ln_chi2_prob
+from uncle_val.learning.losses import UncleLoss
 from uncle_val.learning.lsdb_dataset import LSDBIterableDataset
 from uncle_val.learning.models import UncleModel
 from uncle_val.learning.training import evaluate_loss, train_step
@@ -33,7 +31,7 @@ def training_loop(
     train_batch_size: int,
     val_batch_size: int,
     snapshot_every: int,
-    loss_fn: Callable | None,
+    loss_fn: UncleLoss,
     lr: float,
     start_tfboard: bool,
     output_root: str | Path,
@@ -87,9 +85,6 @@ def training_loop(
     intermediate_model_dir = output_dir / "models"
     intermediate_model_dir.mkdir(parents=True, exist_ok=True)
     tmp_validation_dir = output_dir / "validation"
-
-    if loss_fn is None:
-        loss_fn = partial(minus_ln_chi2_prob, soft=20)
 
     if start_tfboard:
         _launch_tfboard(output_root)

@@ -1,9 +1,9 @@
-from collections.abc import Callable
 from pathlib import Path
 
 import torch
 
 from uncle_val.datasets import dp1_catalog_single_band
+from uncle_val.learning.losses import UncleLoss
 from uncle_val.learning.models import LinearModel
 from uncle_val.pipelines.training_loop import training_loop
 
@@ -19,7 +19,7 @@ def run_dp1_linear_flux_err(
     train_batch_size: int,
     val_batch_size: int,
     output_root: str | Path,
-    loss_fn: Callable | None = None,
+    loss_fn: UncleLoss,
     start_tfboard: bool = False,
     snapshot_every: int = 128,
     device: str | torch.device = "cpu",

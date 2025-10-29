@@ -1,5 +1,4 @@
 import random
-from collections.abc import Callable
 
 import numpy as np
 import pytest
@@ -7,14 +6,14 @@ import torch
 import torch.optim
 from numpy.testing import assert_allclose
 from uncle_val.datasets.fake import fake_non_variable_lcs
-from uncle_val.learning.losses import kl_divergence_whiten, minus_ln_chi2_prob
+from uncle_val.learning.losses import UncleLoss, kl_divergence_whiten_loss, minus_ln_chi2_prob_loss
 from uncle_val.learning.lsdb_dataset import LSDBIterableDataset
 from uncle_val.learning.models import ConstantModel, LinearModel, MLPModel, UncleModel
 from uncle_val.learning.training import train_step
 
 
 def run_model(
-    *, batch_size: int, train_batches: int, n_obj: int, model: UncleModel, loss: Callable, rtol: float
+    *, batch_size: int, train_batches: int, n_obj: int, model: UncleModel, loss: UncleLoss, rtol: float
 ):
     """Run tests with MLP model
 
@@ -122,32 +121,38 @@ def test_model(model):
     _ = model(torch.randn(model.d_input))
 
 
-@pytest.mark.parametrize("loss", [minus_ln_chi2_prob, kl_divergence_whiten])
+@pytest.mark.parametrize("loss_prod", [minus_ln_chi2_prob_loss, kl_divergence_whiten_loss])
+@pytest.mark.parametrize("lmbd", [None, 0.1])
+@pytest.mark.parametrize("soft", [None, 20.0])
+@pytest.mark.parametrize("kind", ["accum", "mean"])
 @pytest.mark.long
-def test_mlp_model_many_objects(loss):
+def test_mlp_model_many_objects(loss_prod, soft, lmbd, kind):
     """Fit MLPModel for a constant u function with many objects"""
     model = MLPModel(
         d_output=1,
         dropout=None,
     )
+    loss = loss_prod(lmbd=lmbd, soft=soft, kind=kind)
     run_model(model=model, loss=loss, batch_size=1, train_batches=2000, n_obj=2000, rtol=0.1)
 
 
-@pytest.mark.parametrize("loss", [minus_ln_chi2_prob, kl_divergence_whiten])
+@pytest.mark.parametrize("loss_prod", [minus_ln_chi2_prob_loss, kl_divergence_whiten_loss])
 @pytest.mark.long
-def test_linear_model_many_objects(loss):
+def test_linear_model_many_objects(loss_prod):
     """Fit MLPModel for a constant u function with many objects"""
     model = LinearModel(
         d_output=1,
     )
+    loss = loss_prod(lmbd=None, soft=None, kind="accum")
     run_model(model=model, loss=loss, batch_size=2, train_batches=2000, n_obj=1000, rtol=0.1)
 
 
-@pytest.mark.parametrize("loss", [minus_ln_chi2_prob, kl_divergence_whiten])
+@pytest.mark.parametrize("loss_prod", [minus_ln_chi2_prob_loss, kl_divergence_whiten_loss])
 @pytest.mark.long
-def test_constant_model_many_objects(loss):
+def test_constant_model_many_objects(loss_prod):
     """Fit MLPModel for a constant u function with many objects"""
     model = ConstantModel(
         d_output=1,
     )
+    loss = loss_prod(lmbd=None, soft=None, kind="accum")
     run_model(model=model, loss=loss, batch_size=2, train_batches=2000, n_obj=1000, rtol=0.01)

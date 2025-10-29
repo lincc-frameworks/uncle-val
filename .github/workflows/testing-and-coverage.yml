@@ -32,7 +32,7 @@ jobs:
         uv pip install --system -e .[dev]
     - name: Run unit tests with pytest
       run: |
-        python -m pytest --cov=uncle_val --cov-report=xml -m 'not long' --durations=0
+        python -m pytest --cov=uncle_val --cov-report=xml --durations=0
     - name: Upload coverage report to codecov
       uses: codecov/codecov-action@v5
       with:

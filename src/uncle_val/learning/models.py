@@ -81,7 +81,7 @@ class UncleModel(torch.nn.Module):
 
     The output is either 1-d or 2-d:
     - 0th index is -ln(uu), so u = exp(-output[0])
-    - 1st index is ln(s - 1), so s = exp(output[1]) - 1
+    - 1st index is ln(1 + s), so s = exp(output[1]) - 1
     The original residual is defined as: (flux - avg_flux) / err,
     where avg_flux is sum(flux / err^2) / sum(1 / err^2).
     The transformed uncertainty is defined is corrected_err = u*err,

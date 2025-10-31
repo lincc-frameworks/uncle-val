@@ -71,17 +71,24 @@ def run_dp1_mlp(
         mode="forced",
     ).map_partitions(lambda df: df.drop(columns=["band", "object_mag", "coord_ra", "coord_dec"]))
 
-    columns = ["lc.x", "lc.err", "extendedness"] + [f"is_{band}_band" for band in bands]
+    columns = [
+        "lc.x",
+        "lc.err",
+        "extendedness",
+        "lc.skyBg",
+        "lc.seeing",
+        "lc.expTime",
+    ] + [f"is_{band}_band" for band in bands]
     columns_no_prefix = [col.removeprefix("lc.") for col in columns]
 
-    model = MLPModel(d_input=len(columns), d_middle=(30, 30, 50), dropout=None, d_output=1)
+    model = MLPModel(input_names=columns_no_prefix, d_middle=(300, 300, 500), dropout=None, d_output=1)
 
     model_path = training_loop(
         catalog=catalog,
         columns=columns_no_prefix,
         model=model,
         loss_fn=loss_fn,
-        lr=1e-4,
+        lr=1e-5,
         n_workers=n_workers,
         n_src=n_src,
         n_lcs=n_lcs,

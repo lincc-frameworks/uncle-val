@@ -5,6 +5,7 @@ from typing import Literal
 import lsdb
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 from upath import UPath
 
 from uncle_val.variability_detectors import get_combined_variability_detector
@@ -102,6 +103,16 @@ def _filter_variable_lcs(df, *, nested_flux_col, nested_err_col, var_detector):
     return df[~is_variable]
 
 
+def _read_ccd_visit_table(path, columns):
+    df = pd.read_parquet(path, columns=columns, dtype_backend="pyarrow")
+    # Patch seeing
+    if columns is None or "seeing" in columns:
+        seeing = pa.array(df["seeing"])
+        replace_value = np.nanmean(seeing)
+        df["seeing"] = pa.compute.replace_with_mask(seeing, pa.compute.is_nan(seeing), replace_value)
+    return df
+
+
 def _add_visit_info(df, *, lc_col, ccd_visits_path, ccd_visits_cols):
     ordinal_idx_name = "__ordinal_idx_"
     lsdb_idx_name = df.index.name
@@ -109,7 +120,7 @@ def _add_visit_info(df, *, lc_col, ccd_visits_path, ccd_visits_cols):
     # https://github.com/lincc-frameworks/nested-pandas/issues/391
     flat_lc = df_ordinal_idx[lc_col].to_flat().reset_index(drop=False)
 
-    visits = pd.read_parquet(ccd_visits_path, columns=ccd_visits_cols, dtype_backend="pyarrow")
+    visits = _read_ccd_visit_table(ccd_visits_path, ccd_visits_cols)
     merged = (
         pd.merge(
             visits,

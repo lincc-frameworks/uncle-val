@@ -4,7 +4,7 @@ from typing import Literal
 
 import torch
 from torch import Tensor
-from torch.distributions.chi2 import Chi2
+from torch.distributions import Chi2
 
 from uncle_val.whitening import whiten_data
 
@@ -23,11 +23,11 @@ class UncleLoss(ABC):
         self.lmbd = lmbd
 
     @abstractmethod
-    def penalty_scale_factor(self, shape) -> Tensor:
+    def penalty_scale_factor(self, shape: torch.Size) -> Tensor:
         """Multiplication factor to use with penalty loss."""
         raise NotImplementedError
 
-    def penalty_term(self, input_shape: Tensor, model_outputs: Tensor) -> Tensor:
+    def penalty_term(self, input_shape: torch.Size, model_outputs: Tensor) -> Tensor:
         """Compute loss term based on output vector"""
         if self.lmbd is None:
             return torch.zeros_like(model_outputs.flatten()[0])
@@ -142,7 +142,7 @@ class Chi2BasedLoss(SoftenLoss, ABC):
         """Multiplication factor to use with penalty loss."""
         dof = self._degrees_of_freedom(shape)
         distr = self._chi2_distr(shape)
-        return distr.log_prob(dof)
+        return torch.abs(distr.log_prob(dof))
 
 
 class MinusLnChi2ProbTotal(Chi2BasedLoss):
@@ -296,7 +296,9 @@ class KLWhitenBasedLoss(SoftenLoss, ABC):
         torch.Tensor, of shape (n_batch, n_src,)
             Soften whiten sources
         """
-        z = self.whiten_func(flux, err**2)
+        orig_shape = flux.shape
+        shape_2d = (torch.prod(torch.tensor(orig_shape[:-1])), orig_shape[-1])
+        z = self.whiten_func(flux.reshape(shape_2d), torch.square(err.reshape(shape_2d))).reshape(orig_shape)
 
         if self.soft is None:
             return z

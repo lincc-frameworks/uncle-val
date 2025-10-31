@@ -14,8 +14,9 @@ class UncleScaler:
         "x": "norm_flux",
         "flux": "norm_flux",
         "err": "norm_err",
-        "expTime": "exp_time",
-        "skyBg": "sky_bg",
+        "expTime": "norm_exp_time",
+        "skyBg": "norm_sky_bg",
+        "seeing": "norm_seeing",
     }
 
     flux_scale_mag = 23.0
@@ -60,6 +61,10 @@ class UncleScaler:
     def norm_sky_bg(self, sky_bg: torch.Tensor) -> torch.Tensor:
         """Normalize sky background."""
         return torch.log10(sky_bg / self.sky_bg_scale)
+
+    def norm_seeing(self, seeing: torch.Tensor) -> torch.Tensor:
+        """Normalize seeing."""
+        return torch.log10(seeing)
 
     def normalizers(self, input_names) -> dict[int, Callable]:
         """Mapping from feature index to normalizer function."""

@@ -1,7 +1,6 @@
 import shutil
 from datetime import datetime
 from pathlib import Path
-from warnings import catch_warnings, filterwarnings
 
 import lsdb
 import numpy as np
@@ -96,22 +95,54 @@ def training_loop(
     with Client(n_workers=n_workers, memory_limit="8GB", threads_per_worker=1) as client:
         print(f"Dask Dashboard Link: {client.dashboard_link}")
 
-        with catch_warnings():
-            # LSDB complains that we return a series, not a dataframe, from map_partitions
-            filterwarnings("ignore", category=RuntimeWarning, module="lsdb.*")
+        validation_dataset_lsdb = LSDBIterableDataset(
+            catalog=catalog,
+            columns=columns,
+            client=client,
+            batch_lc=val_batch_size,
+            n_src=n_src,
+            partitions_per_chunk=n_workers * 8,
+            loop=False,
+            hash_range=VALIDATION_SPLIT,
+            seed=1,
+            device=device,
+        )
 
-            validation_dataset_lsdb = LSDBIterableDataset(
-                catalog=catalog,
-                columns=columns,
-                client=client,
-                batch_lc=val_batch_size,
-                n_src=n_src,
-                partitions_per_chunk=n_workers * 8,
-                loop=False,
-                hash_range=VALIDATION_SPLIT,
-                seed=1,
-                device=device,
-            )
+        with ValidationDataLoaderContext(validation_dataset_lsdb, tmp_validation_dir) as val_dataloader:
+            best_val_loss = torch.tensor(float("inf"), device=device)
+            best_model_path = None
+
+            sum_train_loss = torch.tensor(float("inf"), device=device)
+            sum_grad_norm = torch.tensor(float("inf"), device=device)
+
+            def snapshot(i):
+                nonlocal best_val_loss, best_model_path, sum_train_loss, sum_grad_norm
+
+                model.eval()
+                sum_val_loss = torch.tensor(0.0).to(device)
+                n_val_batches_used = 0
+                for val_batch in val_dataloader:
+                    sum_val_loss += evaluate_loss(
+                        model=model,
+                        loss=loss_fn,
+                        batch=val_batch,
+                    )
+                    n_val_batches_used += 1
+                summary_writer.add_scalar("Mean validation loss", sum_val_loss / n_val_batches_used, i)
+
+                n_train_batches_used = snapshot_every if i % snapshot_every == 0 else i % snapshot_every
+                summary_writer.add_scalar("Mean train loss", sum_train_loss / n_train_batches_used, i)
+                summary_writer.add_scalar("Mean grad norm", sum_grad_norm / n_train_batches_used, i)
+                sum_train_loss = torch.tensor(0.0).to(device)
+                sum_grad_norm = torch.tensor(0.0).to(device)
+
+                current_model_path = intermediate_model_dir / f"{model_name}_{i:09d}.pt"
+                torch.save(model, current_model_path)
+                if sum_val_loss < best_val_loss:
+                    best_val_loss = sum_val_loss
+                    best_model_path = current_model_path
+                model.train()
+
             training_dataset_iter = iter(
                 LSDBIterableDataset(
                     catalog=catalog,
@@ -126,38 +157,6 @@ def training_loop(
                     device=device,
                 )
             )
-
-        with ValidationDataLoaderContext(validation_dataset_lsdb, tmp_validation_dir) as val_dataloader:
-            best_val_loss = torch.tensor(float("inf"), device=device)
-            best_model_path = None
-
-            sum_train_loss = torch.tensor(float("inf"), device=device)
-            sum_grad_norm = torch.tensor(float("inf"), device=device)
-
-            def snapshot(i):
-                nonlocal best_val_loss, best_model_path, sum_train_loss, sum_grad_norm
-
-                model.eval()
-                sum_val_loss = torch.tensor(0.0).to(device)
-                for val_batch in val_dataloader:
-                    sum_val_loss += evaluate_loss(
-                        model=model,
-                        loss=loss_fn,
-                        batch=val_batch,
-                    )
-                summary_writer.add_scalar("Sum validation loss", sum_val_loss, i)
-
-                summary_writer.add_scalar("Sum train loss", sum_train_loss, i)
-                summary_writer.add_scalar("Sum grad norm", sum_grad_norm, i)
-                sum_train_loss = torch.tensor(0.0).to(device)
-                sum_grad_norm = torch.tensor(0.0).to(device)
-
-                current_model_path = intermediate_model_dir / f"{model_name}_{i:09d}.pt"
-                torch.save(model, current_model_path)
-                if sum_val_loss < best_val_loss:
-                    best_val_loss = sum_val_loss
-                    best_model_path = current_model_path
-                model.train()
 
             for i_train_batch, train_batch in zip(
                 tqdm(range(n_train_batches), desc="Training batch"), training_dataset_iter, strict=False

@@ -1,5 +1,6 @@
 from collections.abc import Generator
 from itertools import chain
+from warnings import catch_warnings, filterwarnings
 
 import dask.distributed
 import numpy as np
@@ -16,7 +17,7 @@ from uncle_val.utils.variable import Variable
 
 
 def _reduce_all_columns_wrapper(*args, columns=None, udf, **kwargs):
-    row_dict = dict(zip(columns, args, strict=False))
+    row_dict = dict(zip(columns, args, strict=True))
     return udf(row_dict, **kwargs)
 
 
@@ -142,15 +143,19 @@ def lsdb_nested_series_data_generator(
     partition_shuffle_seed = rng.integers(1 << 63).item()
     src_shuffle_seed = Variable(rng.integers(1 << 63).item())
 
-    dask_series = catalog.map_partitions(
-        _process_partition,
-        include_pixel=True,
-        n_src=n_src,
-        lc_col=lc_col,
-        id_col=id_col,
-        hash_range=hash_range,
-        seed=src_shuffle_seed,
-    )
+    with catch_warnings():
+        # LSDB complains that we return a series, not a dataframe, from map_partitions
+        filterwarnings("ignore", category=RuntimeWarning, module="lsdb.*")
+
+        dask_series = catalog.map_partitions(
+            _process_partition,
+            include_pixel=True,
+            n_src=n_src,
+            lc_col=lc_col,
+            id_col=id_col,
+            hash_range=hash_range,
+            seed=src_shuffle_seed,
+        )
     lsdb_generator = LSDBDataGenerator(
         catalog=dask_series,
         client=client,

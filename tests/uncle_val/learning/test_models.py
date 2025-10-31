@@ -133,7 +133,7 @@ def test_mlp_model_many_objects(loss_prod, soft, lmbd, kind):
         dropout=None,
     )
     loss = loss_prod(lmbd=lmbd, soft=soft, kind=kind)
-    run_model(model=model, loss=loss, batch_size=1, train_batches=2000, n_obj=2000, rtol=0.1)
+    run_model(model=model, loss=loss, batch_size=2, train_batches=2000, n_obj=2000, rtol=0.1)
 
 
 @pytest.mark.parametrize("loss_prod", [minus_ln_chi2_prob_loss, kl_divergence_whiten_loss])

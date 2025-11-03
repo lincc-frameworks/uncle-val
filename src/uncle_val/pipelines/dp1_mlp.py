@@ -18,6 +18,8 @@ def run_dp1_mlp(
     val_batch_size: int,
     output_root: str | Path,
     loss_fn: UncleLoss,
+    load_model_path: str | Path | None = None,
+    lr: float = 1e-5,
     start_tfboard: bool = False,
     snapshot_every: int = 128,
     device: torch.device | str = "cpu",
@@ -48,6 +50,10 @@ def run_dp1_mlp(
         Snapshot model and metrics every this much training batches.
     loss_fn : Callable or None
         Loss function to use, by default soften Χ² is used.
+    load_model_path : str or Path or None
+        Pre-trained model to continue training from.
+    lr : float
+        Learning rate.
     start_tfboard : bool
         Whether to start a TensorBoard session.
     device : torch.device | str
@@ -81,14 +87,17 @@ def run_dp1_mlp(
     ] + [f"is_{band}_band" for band in bands]
     columns_no_prefix = [col.removeprefix("lc.") for col in columns]
 
-    model = MLPModel(input_names=columns_no_prefix, d_middle=(300, 300, 500), dropout=None, d_output=1)
+    if load_model_path is None:
+        model = MLPModel(input_names=columns_no_prefix, d_middle=(300, 300, 500), dropout=None, d_output=1)
+    else:
+        model = torch.load(load_model_path, weights_only=False, map_location=device)
 
     model_path = training_loop(
         catalog=catalog,
         columns=columns_no_prefix,
         model=model,
         loss_fn=loss_fn,
-        lr=1e-5,
+        lr=lr,
         n_workers=n_workers,
         n_src=n_src,
         n_lcs=n_lcs,

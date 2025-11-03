@@ -281,7 +281,7 @@ class LSDBIterableDataset(IterableDataset):
 
     def __iter__(self) -> Generator[torch.Tensor, None, None]:
         for nested_series in chain([self.current_nested_series], self.nested_series_gen):
-            if len(self.nested_series_leftovers) > 0:
+            if len(self.nested_series_leftovers) > 0 and len(nested_series) > 0:
                 nested_series = pd.concat([self.nested_series_leftovers, nested_series])
 
             last_idx = len(nested_series) // self.batch_lc * self.batch_lc

@@ -3,43 +3,33 @@ from numba.extending import register_jitable
 
 
 @register_jitable
-def _stable_decomposition(a, np=None):
-    """Matrix decomposition for a constant-fit covariance matrix"""
+def _whitening_matrix(sigma, np=None):
+    """Returns matrix A such that [A @ (x - average_x)] ~ N(0, I_{n-1})"""
     if np is None:
         np = numpy
 
-    n = len(a)
-    n_float = np.full_like(a[0], n)
-    mat_d = np.diag(a)
-    one_vec = np.ones_like(a.reshape(-1, 1)) / np.sqrt(n_float)
+    ones = np.ones_like(sigma)
+    eye = np.diag(ones)
 
-    inv_a_sum = np.sum(1.0 / a)
-    u = np.ones_like(a.reshape(-1, 1)) / np.sqrt(inv_a_sum)
+    inv_sigma = np.reciprocal(sigma)
+    weight = np.square(inv_sigma)
+    sum_weight = np.sum(weight)
 
-    # Explicit eigenvalue along ones-vector:
-    lambda_min = (one_vec.T @ (mat_d - u @ u.T) @ one_vec)[0]
-    lambda_min = np.maximum(lambda_min, np.asarray(1e-8))
+    weighted_mean_projector = eye - np.outer(ones, weight) / sum_weight
 
-    # Construct orthonormal basis explicitly:
-    mat_q, _ = np.linalg.qr(np.diag(np.ones_like(a)) - one_vec @ one_vec.T)
-    mat_q = mat_q[:, : n - 1]  # explicitly enforce correct dimensions (n x n-1)
+    # Householder reflection
+    normalized_inv_sigma = inv_sigma / np.sqrt(sum_weight)
+    householder_vector = np.concatenate((normalized_inv_sigma[:-1], normalized_inv_sigma[-1:] + 1.0))
+    householder_vector_norm = householder_vector / np.linalg.norm(householder_vector)
+    householder_matrix = eye - 2.0 * np.outer(householder_vector_norm, householder_vector_norm)
 
-    # Project onto orthogonal subspace:
-    m_orth = mat_q.T @ (mat_d - u @ u.T) @ mat_q
-    eigvals_orth, eigvecs_orth = np.linalg.eigh(m_orth)
+    orthonormal_rows = householder_matrix[:-1, :]
 
-    # Combine eigenvectors/eigenvalues explicitly:
-    # We could use np.insert, but it doesn't exist in torch
-    eigvals_full = np.concatenate((lambda_min, eigvals_orth))
-    eigvecs_full = np.hstack((one_vec, mat_q @ eigvecs_orth))
-
-    # Cholesky-like decomposition
-    mat_b = eigvecs_full @ np.diag(np.sqrt(eigvals_full))
-
-    return mat_b
+    whitening_transform = orthonormal_rows @ np.diag(inv_sigma) @ weighted_mean_projector
+    return whitening_transform
 
 
-def whiten_data(x, v, *, np=None):
+def whiten_data(x, sigma, *, np=None):
     """Whitening of Gaussian time-independent data
 
     It is assumed that each x[i] ~ N(mu, v[i]),
@@ -50,25 +40,26 @@ def whiten_data(x, v, *, np=None):
     ----------
     x : array, (n_src,)
         Input signal
-    v : array, (n_src,)
-        Signal variance
+    sigma : array, (n_src,)
+        Signal standard deviation
     np : module, optional
         Numpy-compatible module, numpy, jax.numpy and torch are supported
+
+    Returns
+    -------
+    array, (n_src - 1,)
+        Whiten values
     """
     if np is None:
         np = numpy
 
-    mean_v = np.mean(v)
-    v = v / mean_v
+    transform = _whitening_matrix(sigma, np=np)
 
-    decomposed = _stable_decomposition(v, np=np)
-    transform = np.linalg.inv(decomposed)
-
-    # We can use np.average(x, weights=1/v), but it doesn't exist in torch
-    weights = 1 / v
+    # We can use np.average(x, weights=1/sigma**2), but it doesn't exist in torch
+    weights = np.reciprocal(np.square(sigma))
     mu = np.sum(x * weights) / np.sum(weights)
 
-    residual = (x - mu) / np.sqrt(mean_v)
+    residual = x - mu
     z = transform @ residual
 
     return z

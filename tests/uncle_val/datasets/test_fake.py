@@ -20,7 +20,7 @@ def test_fake_non_variable_lcs():
     assert len(nf["lc.x"]) == n_obj * n_src
 
     whiten = nf.reduce(
-        lambda flux, err: {"whiten.z": whiten_data(flux, err**2)},
+        lambda flux, err: {"whiten.z": whiten_data(flux, err)},
         "lc.x",
         "lc.err",
     )

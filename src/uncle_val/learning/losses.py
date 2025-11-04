@@ -298,7 +298,8 @@ class KLWhitenBasedLoss(SoftenLoss, ABC):
         """
         orig_shape = flux.shape
         shape_2d = (torch.prod(torch.tensor(orig_shape[:-1])), orig_shape[-1])
-        z = self.whiten_func(flux.reshape(shape_2d), torch.square(err.reshape(shape_2d))).reshape(orig_shape)
+        output_shape = *orig_shape[:-1], orig_shape[-1] - 1
+        z = self.whiten_func(flux.reshape(shape_2d), err.reshape(shape_2d)).reshape(output_shape)
 
         if self.soft is None:
             return z

@@ -21,7 +21,7 @@ numba_whiten_data = partial(numba.njit(whiten_data), np=None)
 
 
 def _whiten_flux_err(flux, err):
-    return {"whiten.z": numba_whiten_data(flux, np.square(err))}
+    return {"whiten.z": numba_whiten_data(flux, err)}
 
 
 def _samples_in_bins(x, bins, sample_count, rng):

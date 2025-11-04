@@ -7,6 +7,7 @@ import numpy as np
 import torch
 from dask.distributed import Client
 from torch.optim import Adam
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 
@@ -90,6 +91,7 @@ def training_loop(
     summary_writer = SummaryWriter(log_dir=str(output_dir))
 
     optimizer = Adam(model.parameters(), lr=lr)
+    scheduler = ReduceLROnPlateau(optimizer, factor=10**-0.5, patience=16, cooldown=32)
     model = model.to(device)
 
     with Client(n_workers=n_workers, memory_limit="8GB", threads_per_worker=1) as client:
@@ -141,6 +143,10 @@ def training_loop(
                 if sum_val_loss < best_val_loss:
                     best_val_loss = sum_val_loss
                     best_model_path = current_model_path
+
+                scheduler.step(sum_val_loss)
+                summary_writer.add_scalar("Learning rate", scheduler.get_last_lr()[0], i)
+
                 model.train()
 
             training_dataset_iter = iter(

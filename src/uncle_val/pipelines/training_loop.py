@@ -5,7 +5,7 @@ from pathlib import Path
 import lsdb
 import numpy as np
 import torch
-from dask.distributed import Client
+from dask.distributed import Client, Future
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.tensorboard import SummaryWriter
@@ -14,10 +14,10 @@ from tqdm.auto import tqdm
 from uncle_val.learning.losses import UncleLoss
 from uncle_val.learning.lsdb_dataset import LSDBIterableDataset
 from uncle_val.learning.models import UncleModel
-from uncle_val.learning.training import evaluate_loss, train_step
+from uncle_val.learning.training import train_step
 from uncle_val.pipelines.splits import TRAIN_SPLIT, VALIDATION_SPLIT
 from uncle_val.pipelines.utils import _launch_tfboard
-from uncle_val.pipelines.validation_set_utils import ValidationDataLoaderContext
+from uncle_val.pipelines.validation_set_utils import ValidationDataLoaderContext, get_val_loss
 
 
 def training_loop(
@@ -111,6 +111,9 @@ def training_loop(
         )
 
         with ValidationDataLoaderContext(validation_dataset_lsdb, tmp_validation_dir) as val_dataloader:
+            mean_val_loss_future: Future | None = None
+            mean_val_loss_i = 0
+
             best_val_loss = torch.tensor(float("inf"), device=device)
             best_model_path = None
 
@@ -118,19 +121,32 @@ def training_loop(
             sum_grad_norm = torch.tensor(float("inf"), device=device)
 
             def snapshot(i):
-                nonlocal best_val_loss, best_model_path, sum_train_loss, sum_grad_norm
+                nonlocal \
+                    mean_val_loss_future, \
+                    mean_val_loss_i, \
+                    best_val_loss, \
+                    best_model_path, \
+                    sum_train_loss, \
+                    sum_grad_norm
 
                 model.eval()
-                sum_val_loss = torch.tensor(0.0).to(device)
-                n_val_batches_used = 0
-                for val_batch in val_dataloader:
-                    sum_val_loss += evaluate_loss(
-                        model=model,
-                        loss=loss_fn,
-                        batch=val_batch,
-                    )
-                    n_val_batches_used += 1
-                summary_writer.add_scalar("Mean validation loss", sum_val_loss / n_val_batches_used, i)
+
+                current_model_path = intermediate_model_dir / f"{model_name}_{i:09d}.pt"
+                torch.save(model, current_model_path)
+
+                if mean_val_loss_future is None:
+                    mean_val_loss = torch.tensor(float("inf"))
+                else:
+                    mean_val_loss = mean_val_loss_future.result()
+                    summary_writer.add_scalar("Mean validation loss", mean_val_loss, mean_val_loss_i)
+                mean_val_loss_future = client.submit(
+                    get_val_loss,
+                    model_path=current_model_path,
+                    loss=loss_fn,
+                    data_loader=val_dataloader,
+                    device=device,
+                )
+                mean_val_loss_i = i
 
                 n_train_batches_used = snapshot_every if i % snapshot_every == 0 else i % snapshot_every
                 summary_writer.add_scalar("Mean train loss", sum_train_loss / n_train_batches_used, i)
@@ -138,13 +154,11 @@ def training_loop(
                 sum_train_loss = torch.tensor(0.0).to(device)
                 sum_grad_norm = torch.tensor(0.0).to(device)
 
-                current_model_path = intermediate_model_dir / f"{model_name}_{i:09d}.pt"
-                torch.save(model, current_model_path)
-                if sum_val_loss < best_val_loss:
-                    best_val_loss = sum_val_loss
+                if mean_val_loss < best_val_loss:
+                    best_val_loss = mean_val_loss
                     best_model_path = current_model_path
 
-                scheduler.step(sum_val_loss)
+                scheduler.step(mean_val_loss)
                 summary_writer.add_scalar("Learning rate", scheduler.get_last_lr()[0], i)
 
                 model.train()
@@ -179,10 +193,11 @@ def training_loop(
                 sum_train_loss += train_loss.detach()
                 sum_grad_norm += torch.nn.utils.clip_grad_norm_(model.parameters(), float("inf"))
 
-                if (
-                    i_train_batch % snapshot_every == 0 or i_train_batch == n_train_batches - 1
-                ) and i_train_batch > 0:
+                if i_train_batch % snapshot_every == 0 and i_train_batch > 0:
                     snapshot(i_train_batch)
+            # Call twice to record the final validation loss
+            snapshot(i_train_batch)
+            snapshot(i_train_batch)
 
     model.eval()
     summary_writer.add_graph(model, train_batch[0])

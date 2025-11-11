@@ -32,18 +32,19 @@ def whitening_operator(sigma, np=None):
     weight = np.square(inv_sigma)
     inv_sum_weight = np.reciprocal(np.sum(weight))
 
-    weighted_mean_projector = eye - np.outer(ones, weight) * inv_sum_weight
-
     # Householder reflection
-    normalized_inv_sigma = inv_sigma * np.sqrt(inv_sum_weight)
-    householder_vector = np.concatenate((normalized_inv_sigma[:-1], normalized_inv_sigma[-1:] + 1.0))
-    householder_vector_norm = householder_vector / np.linalg.norm(householder_vector)
-    householder_matrix = eye - 2.0 * np.outer(householder_vector_norm, householder_vector_norm)
+    unit_projection_vector = inv_sigma * np.sqrt(inv_sum_weight)
+    # unit_projection_vector + [1, 0, 0, ..., 0]
+    householder_vector = np.concatenate((unit_projection_vector[:1] + 1.0, unit_projection_vector[1:]))
+    householder_matrix = eye - 2.0 * np.outer(householder_vector, householder_vector) / np.sum(
+        np.square(householder_vector)
+    )
 
-    orthonormal_rows = householder_matrix[:-1, :]
+    to_residuals = eye - np.outer(ones, weight) * inv_sum_weight
+    to_rel_residuals = np.diag(inv_sigma)
+    to_whiten = householder_matrix[1:, :]
 
-    whitening_transform = orthonormal_rows @ np.diag(inv_sigma) @ weighted_mean_projector
-    return whitening_transform
+    return to_whiten @ to_rel_residuals @ to_residuals
 
 
 def whiten_data(x, sigma, *, np=None):

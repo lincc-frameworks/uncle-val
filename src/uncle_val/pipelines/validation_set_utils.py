@@ -4,7 +4,9 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader, Dataset
 
+from uncle_val.learning.losses import UncleLoss
 from uncle_val.learning.lsdb_dataset import LSDBIterableDataset
+from uncle_val.learning.training import evaluate_loss
 
 
 class ValidationDataset(Dataset):
@@ -66,3 +68,40 @@ class ValidationDataLoaderContext:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         shutil.rmtree(self.tmp_dir)
+
+
+def get_val_loss(
+    *, model_path: str | Path, loss: UncleLoss, data_loader: DataLoader, device: torch.device
+) -> float:
+    """Computes the loss for validation set with serialized model
+
+    Parameters
+    ----------
+    model_path : Path or str
+        Path to Uncle model
+    loss : UncleLoss
+        Loss function to use for validation
+    data_loader : DataLoader
+        DataLoader which yields validation data.
+    device : torch.device
+        PyTorch device to for the data and for the model.
+    """
+    model = torch.load(model_path, weights_only=False, map_location=device)
+
+    sum_val_loss = 0.0
+
+    n_val_batches_used = 0
+    for val_batch in data_loader:
+        sum_val_loss += (
+            evaluate_loss(
+                model=model,
+                loss=loss,
+                batch=val_batch,
+            )
+            .cpu()
+            .detach()
+            .numpy()
+        )
+        n_val_batches_used += 1
+
+    return sum_val_loss / n_val_batches_used

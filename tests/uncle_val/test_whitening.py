@@ -4,15 +4,16 @@ import jax
 import jax.numpy as jnp
 import numba
 import numpy as np
+import pytest
 import torch
 from numpy.testing import assert_allclose
-from uncle_val.whitening import whiten_data
+from uncle_val.whitening import whiten_data, whitening_operator
 
 
-def test_whiten_data():
+@pytest.mark.parametrize("n_src", [3, 100])
+def test_whiten_data(n_src):
     """Test whiten_data() with err drawn from a narrow range"""
-    n_obj = 1000
-    n_src = 100
+    n_obj = 10_000
     rng = np.random.default_rng(42)
 
     true_flux = rng.exponential(size=n_obj)
@@ -81,3 +82,17 @@ def test_whiten_data_torch():
 
     assert_allclose(np.mean(z), 0.0, atol=3.0 / np.sqrt(n_src))
     assert_allclose(np.std(z), 1.0, rtol=3.0 / np.sqrt(n_src))
+
+
+@pytest.mark.parametrize("n_src", [2, 30])
+def test_whitening_operator(n_src):
+    """Test that whitening_operator() works correctly"""
+    rng = np.random.default_rng(42)
+    sigma = rng.lognormal(mean=10, sigma=2, size=n_src)
+    cov_x_minus_average = np.diag(sigma**2) - np.ones((n_src, n_src)) / np.sum(1 / sigma**2)
+    operator = whitening_operator(sigma)
+
+    assert operator.shape == (n_src - 1, n_src)
+    maybe_identity = operator @ cov_x_minus_average @ operator.T
+    assert maybe_identity.shape == (n_src - 1, n_src - 1)
+    assert_allclose(maybe_identity - np.eye(n_src - 1), 0.0, atol=1e-10)

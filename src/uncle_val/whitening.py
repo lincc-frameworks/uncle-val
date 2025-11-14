@@ -32,13 +32,14 @@ def whitening_operator(sigma, np=None):
     weight = np.square(inv_sigma)
     inv_sum_weight = np.reciprocal(np.sum(weight))
 
-    # Householder reflection
+    ### Make Householder reflection matrix
+    # Normal vector to the projection hyperplane, which is defined by the projection matrix representing
+    # the relative residuals’ covariance.
     unit_projection_vector = inv_sigma * np.sqrt(inv_sum_weight)
-    # unit_projection_vector + [1, 0, 0, ..., 0]
-    householder_vector = np.concatenate((unit_projection_vector[:1] + 1.0, unit_projection_vector[1:]))
-    householder_matrix = eye - 2.0 * np.outer(householder_vector, householder_vector) / np.sum(
-        np.square(householder_vector)
-    )
+    # Householder vector is normal to the reflection hyperplane, given by the Householder matrix.
+    # The following is the same as: householder_vector = unit_projection_vector + [1, 0, 0, ..., 0]
+    h_vector = np.concatenate((unit_projection_vector[:1] + 1.0, unit_projection_vector[1:]))
+    householder_matrix = eye - 2.0 * np.outer(h_vector, h_vector) / (h_vector @ h_vector)
 
     to_residuals = eye - np.outer(ones, weight) * inv_sum_weight
     to_rel_residuals = np.diag(inv_sigma)

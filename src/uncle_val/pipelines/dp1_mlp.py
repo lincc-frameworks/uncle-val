@@ -21,6 +21,7 @@ def run_dp1_mlp(
     load_model_path: str | Path | None = None,
     lr: float = 1e-5,
     start_tfboard: bool = False,
+    log_activations: bool = False,
     snapshot_every: int = 128,
     device: torch.device | str = "cpu",
 ) -> tuple[Path, list[str]]:
@@ -56,6 +57,8 @@ def run_dp1_mlp(
         Learning rate.
     start_tfboard : bool
         Whether to start a TensorBoard session.
+    log_activations : bool
+        Whether to log validation activations with TensorBoard session.
     device : torch.device | str
         Torch device to use for training.
 
@@ -106,6 +109,7 @@ def run_dp1_mlp(
         snapshot_every=snapshot_every,
         output_root=output_root,
         start_tfboard=start_tfboard,
+        log_activations=log_activations,
         device=device,
         model_name="mlp",
     )

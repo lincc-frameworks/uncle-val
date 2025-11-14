@@ -1,6 +1,7 @@
 import shutil
 from pathlib import Path
 
+import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 
@@ -70,8 +71,50 @@ class ValidationDataLoaderContext:
         shutil.rmtree(self.tmp_dir)
 
 
-def get_val_loss(
-    *, model_path: str | Path, loss: UncleLoss, data_loader: DataLoader, device: torch.device
+class ActivationHistHook:
+    """Torch model hook for making an activations histogram
+
+    Parameters
+    ----------
+    activation_bins : torch.tensor, (n_bins+1,)
+        Histogram bins
+
+    Attributes
+    ----------
+    bins : torch.tensor, (n_bins+1,)
+        Histogram bins
+    counts : np.ndarray, (n_bins,)
+        Current histogram counts, as float numbers
+    """
+
+    def __init__(self, activation_bins):
+        self.bins = activation_bins
+        self.counts = np.zeros(len(self.bins) - 1, dtype=np.float32)
+
+    def __call__(self, module, input, output):
+        """Hook function, it updates the histogram of the activations
+
+        Parameters
+        ----------
+        module : torch.nn.Module
+            PyTorch module
+        input : torch.tensor
+            Input tensor for the module
+        output : torch.tensor
+            Output tensor for the module
+        """
+        del module, input
+        torch_counts, _torch_bins = torch.histogram(output, self.bins)
+        self.counts += torch_counts.detach().cpu().numpy()
+
+
+def get_val_stats(
+    *,
+    model_path: str | Path,
+    loss: UncleLoss,
+    data_loader: DataLoader,
+    device: torch.device,
+    activation_bins: np.ndarray | None,
 ) -> float:
     """Computes the loss for validation set with serialized model
 
@@ -85,11 +128,16 @@ def get_val_loss(
         DataLoader which yields validation data.
     device : torch.device
         PyTorch device to for the data and for the model.
+    activation_bins : np.ndarray | None
+        If specified, return the histogram of the activations.
     """
     model = torch.load(model_path, weights_only=False, map_location=device)
 
-    sum_val_loss = 0.0
+    if activation_bins is not None:
+        hook = ActivationHistHook(torch.tensor(activation_bins.astype(np.float32), device=device))
+        model.register_forward_hook(hook)
 
+    sum_val_loss = 0.0
     n_val_batches_used = 0
     for val_batch in data_loader:
         sum_val_loss += (
@@ -103,5 +151,8 @@ def get_val_loss(
             .numpy()
         )
         n_val_batches_used += 1
+    mean_val_loss = sum_val_loss / n_val_batches_used
 
-    return sum_val_loss / n_val_batches_used
+    if activation_bins is None:
+        return mean_val_loss
+    return mean_val_loss, hook.counts

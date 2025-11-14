@@ -6,6 +6,7 @@ import lsdb
 import numpy as np
 import torch
 from dask.distributed import Client, Future
+from torch import tensor
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.tensorboard import SummaryWriter
@@ -17,7 +18,7 @@ from uncle_val.learning.models import UncleModel
 from uncle_val.learning.training import train_step
 from uncle_val.pipelines.splits import TRAIN_SPLIT, VALIDATION_SPLIT
 from uncle_val.pipelines.utils import _launch_tfboard
-from uncle_val.pipelines.validation_set_utils import ValidationDataLoaderContext, get_val_loss
+from uncle_val.pipelines.validation_set_utils import ValidationDataLoaderContext, get_val_stats
 
 
 def training_loop(
@@ -34,6 +35,7 @@ def training_loop(
     loss_fn: UncleLoss,
     lr: float,
     start_tfboard: bool,
+    log_activations: bool,
     output_root: str | Path,
     device: str | torch.device,
     model_name: str,
@@ -66,6 +68,8 @@ def training_loop(
         Learning rate.
     start_tfboard : bool
         Whether to start a TensorBoard session.
+    log_activations : bool
+        Whether to log validation activations with TensorBoard session.
     output_root : str or Path
         Where to save the intermediate results.
     device : str or torch.device
@@ -114,11 +118,14 @@ def training_loop(
             mean_val_loss_future: Future | None = None
             mean_val_loss_i = 0
 
-            best_val_loss = torch.tensor(float("inf"), device=device)
+            best_val_loss = tensor(float("inf"), device=device)
             best_model_path = None
 
-            sum_train_loss = torch.tensor(float("inf"), device=device)
-            sum_grad_norm = torch.tensor(float("inf"), device=device)
+            sum_train_loss = tensor(float("inf"), device=device)
+            sum_grad_norm = tensor(float("inf"), device=device)
+            max_abs_grad = tensor(float("inf"), device=device)
+
+            activation_bins = np.linspace(-2, 2, 1001) if log_activations else None
 
             def snapshot(i):
                 nonlocal \
@@ -127,7 +134,8 @@ def training_loop(
                     best_val_loss, \
                     best_model_path, \
                     sum_train_loss, \
-                    sum_grad_norm
+                    sum_grad_norm, \
+                    max_abs_grad
 
                 model.eval()
 
@@ -135,24 +143,38 @@ def training_loop(
                 torch.save(model, current_model_path)
 
                 if mean_val_loss_future is None:
-                    mean_val_loss = torch.tensor(float("inf"))
+                    mean_val_loss = tensor(float("inf"))
                 else:
-                    mean_val_loss = mean_val_loss_future.result()
+                    if log_activations:
+                        mean_val_loss, activation_hist = mean_val_loss_future.result()
+                        summary_writer.add_histogram(
+                            "Validation activations",
+                            np.repeat(
+                                0.5 * (activation_bins[:-1] + activation_bins[1:]),
+                                np.ceil(activation_hist / activation_hist.max() * 1000).astype(int),
+                            ),
+                            mean_val_loss_i,
+                        )
+                    else:
+                        mean_val_loss = mean_val_loss_future.result()
                     summary_writer.add_scalar("Mean validation loss", mean_val_loss, mean_val_loss_i)
                 mean_val_loss_future = client.submit(
-                    get_val_loss,
+                    get_val_stats,
                     model_path=current_model_path,
                     loss=loss_fn,
                     data_loader=val_dataloader,
                     device=device,
+                    activation_bins=activation_bins,
                 )
                 mean_val_loss_i = i
 
                 n_train_batches_used = snapshot_every if i % snapshot_every == 0 else i % snapshot_every
                 summary_writer.add_scalar("Mean train loss", sum_train_loss / n_train_batches_used, i)
                 summary_writer.add_scalar("Mean grad norm", sum_grad_norm / n_train_batches_used, i)
-                sum_train_loss = torch.tensor(0.0).to(device)
-                sum_grad_norm = torch.tensor(0.0).to(device)
+                summary_writer.add_scalar("Max abs grad", max_abs_grad, i)
+                sum_train_loss = tensor(0.0, device=device)
+                sum_grad_norm = tensor(0.0, device=device)
+                max_abs_grad = tensor(0.0, device=device)
 
                 if mean_val_loss < best_val_loss:
                     best_val_loss = mean_val_loss
@@ -192,6 +214,9 @@ def training_loop(
                 )
                 sum_train_loss += train_loss.detach()
                 sum_grad_norm += torch.nn.utils.clip_grad_norm_(model.parameters(), float("inf"))
+                max_abs_grad = torch.maximum(
+                    max_abs_grad, torch.max(tensor([torch.max(p.grad) for p in model.parameters()]))
+                )
 
                 if i_train_batch % snapshot_every == 0 and i_train_batch > 0:
                     snapshot(i_train_batch)

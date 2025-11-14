@@ -21,6 +21,7 @@ def run_dp1_linear_flux_err(
     output_root: str | Path,
     loss_fn: UncleLoss,
     start_tfboard: bool = False,
+    log_activations: bool = False,
     snapshot_every: int = 128,
     device: str | torch.device = "cpu",
 ) -> Path:
@@ -50,6 +51,8 @@ def run_dp1_linear_flux_err(
         Loss function to use, by default soften Χ² is used.
     start_tfboard : bool
         Whether to start a TensorBoard session.
+    log_activations : bool
+        Whether to log validation activations with TensorBoard session.
     output_root : str or Path
         Where to save the intermediate results.
     device : str or torch.device, optional
@@ -92,5 +95,6 @@ def run_dp1_linear_flux_err(
         output_root=output_root,
         device=device,
         start_tfboard=start_tfboard,
+        log_activations=log_activations,
         model_name="linear",
     )

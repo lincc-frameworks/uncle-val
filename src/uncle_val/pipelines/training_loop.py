@@ -95,7 +95,7 @@ def training_loop(
     summary_writer = SummaryWriter(log_dir=str(output_dir))
 
     optimizer = Adam(model.parameters(), lr=lr)
-    scheduler = ReduceLROnPlateau(optimizer, factor=10**-0.5, patience=16, cooldown=32)
+    scheduler = ReduceLROnPlateau(optimizer, factor=10**-0.5, patience=16, cooldown=32, eps=1e-10)
     model = model.to(device)
 
     with Client(n_workers=n_workers, memory_limit="8GB", threads_per_worker=1) as client:
@@ -158,14 +158,15 @@ def training_loop(
                     else:
                         mean_val_loss = mean_val_loss_future.result()
                     summary_writer.add_scalar("Mean validation loss", mean_val_loss, mean_val_loss_i)
-                mean_val_loss_future = client.submit(
-                    get_val_stats,
-                    model_path=current_model_path,
-                    loss=loss_fn,
-                    data_loader=val_dataloader,
-                    device=device,
-                    activation_bins=activation_bins,
-                )
+                if mean_val_loss_i < n_train_batches - 1:
+                    mean_val_loss_future = client.submit(
+                        get_val_stats,
+                        model_path=current_model_path,
+                        loss=loss_fn,
+                        data_loader=val_dataloader,
+                        device=device,
+                        activation_bins=activation_bins,
+                    )
                 mean_val_loss_i = i
 
                 n_train_batches_used = snapshot_every if i % snapshot_every == 0 else i % snapshot_every

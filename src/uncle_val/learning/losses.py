@@ -6,6 +6,7 @@ import torch
 from torch import Tensor
 from torch.distributions import Chi2
 
+from uncle_val.stat_tests import epps_pulley_standard_norm
 from uncle_val.whitening import whiten_data
 
 
@@ -63,6 +64,31 @@ class SoftenLoss(UncleLoss, ABC):
     def __init__(self, *, lmbd: float | None, soft: float | None):
         super().__init__(lmbd=lmbd)
         self.soft = soft
+        self.whiten_func = torch.vmap(partial(whiten_data, np=torch))
+
+    def compute_z(self, flux: Tensor, err: Tensor) -> Tensor:
+        """Compute the whiten values and soften them if needed
+
+        Parameters
+        ----------
+        flux : torch.Tensor
+            Corrected flux vector, (n_batch, n_src,)
+        err : jnp.ndarray
+            Corrected error vector, (n_batch, n_src,)
+
+        Returns
+        -------
+        torch.Tensor, of shape (n_batch, n_src,)
+            Soften whiten sources
+        """
+        orig_shape = flux.shape
+        shape_2d = (torch.prod(torch.tensor(orig_shape[:-1]), dtype=int), orig_shape[-1])
+        output_shape = *orig_shape[:-1], orig_shape[-1] - 1
+        z = self.whiten_func(flux.reshape(shape_2d), err.reshape(shape_2d)).reshape(output_shape)
+
+        if self.soft is None:
+            return z
+        return self.soft * torch.tanh(z / self.soft)
 
 
 def _residuals_lc(flux: Tensor, err: Tensor) -> Tensor:
@@ -261,7 +287,7 @@ def minus_ln_chi2_prob_loss(
 
 
 class KLWhitenBasedLoss(SoftenLoss, ABC):
-    """Base class for KLdivergence based losses.
+    """Base class for KL divergence based losses.
 
     Parameters
     ----------
@@ -273,37 +299,9 @@ class KLWhitenBasedLoss(SoftenLoss, ABC):
          softening.
     """
 
-    def __init__(self, *, lmbd: float | None, soft: float | None):
-        super().__init__(lmbd=lmbd, soft=soft)
-        self.whiten_func = torch.vmap(partial(whiten_data, np=torch))
-
     def penalty_scale_factor(self, shape) -> Tensor:
         """Multiplication factor to use with penalty loss."""
         return torch.tensor(1)
-
-    def compute_z(self, flux: Tensor, err: Tensor) -> Tensor:
-        """Compute the whiten values and soften them if needed
-
-        Parameters
-        ----------
-        flux : torch.Tensor
-            Corrected flux vector, (n_batch, n_src,)
-        err : jnp.ndarray
-            Corrected error vector, (n_batch, n_src,)
-
-        Returns
-        -------
-        torch.Tensor, of shape (n_batch, n_src,)
-            Soften whiten sources
-        """
-        orig_shape = flux.shape
-        shape_2d = (torch.prod(torch.tensor(orig_shape[:-1])), orig_shape[-1])
-        output_shape = *orig_shape[:-1], orig_shape[-1] - 1
-        z = self.whiten_func(flux.reshape(shape_2d), err.reshape(shape_2d)).reshape(output_shape)
-
-        if self.soft is None:
-            return z
-        return self.soft * torch.tanh(z / self.soft)
 
     @staticmethod
     def compute_kl(mu: Tensor, var: Tensor) -> Tensor:
@@ -410,4 +408,141 @@ def kl_divergence_whiten_loss(
             return KLWhitenTotal(lmbd=lmbd, soft=soft)
         case "mean":
             return KLWhitenLc(lmbd=lmbd, soft=soft)
+    raise ValueError(f"Unknown loss kind: {kind}")
+
+
+class EPWhitenBasedLoss(SoftenLoss, ABC):
+    """Base class for Epps-Pulley-based losses.
+
+    Parameters
+    ----------
+    lmbd : float | None
+        Penalty term factor for Tikhonov regularization. None means no
+        Tikhonov regularization.
+    soft : float | None
+         Softness factor for the light-curve loss term. None means no
+         softening.
+    bins : torch.Tensor
+        Frequency integration grid.
+    """
+
+    def __init__(self, lmbd: float | None, soft: float | None, bins: Tensor) -> None:
+        super().__init__(lmbd=lmbd, soft=soft)
+        self.bins = bins
+
+    def penalty_scale_factor(self, shape) -> Tensor:
+        """Multiplication factor to use with penalty loss."""
+        return torch.tensor(1e-3)
+
+
+class EBWhitenTotal(EPWhitenBasedLoss):
+    """Epps-Pulley statistic computed for all whiten sources.
+
+    Parameters
+    ----------
+    lmbd : float | None
+        Penalty term factor for Tikhonov regularization. None means no
+        Tikhonov regularization.
+    soft : float | None
+         Softness factor for the light-curve loss term. None means no
+         softening.
+    bins : torch.Tensor
+        Frequency integration grid. If None, linspace(-5, 5, 17) is used.
+    """
+
+    def __init__(self, lmbd: float | None, soft: float | None, bins: Tensor | None) -> None:
+        if bins is None:
+            bins = torch.linspace(-5.0, 5.0, 17)
+        super().__init__(lmbd=lmbd, soft=soft, bins=bins)
+
+    def lc_term(self, flux: Tensor, err: Tensor) -> Tensor:
+        """Compute the loss
+
+        Parameters
+        ----------
+        flux : torch.Tensor
+            Corrected flux vector, (n_batch, n_src,)
+        err : jnp.ndarray
+            Corrected error vector, (n_batch, n_src,)
+
+        Returns
+        -------
+        torch.Tensor, of shape ()
+            Loss value
+        """
+        z = self.compute_z(flux, err)
+        return epps_pulley_standard_norm(z.flatten(), bins=self.bins.to(z.device))
+
+
+class EBWhitenLc(EPWhitenBasedLoss):
+    """Epps-Pulley statistic averaged over whiten light curves.
+
+    Parameters
+    ----------
+    lmbd : float | None
+        Penalty term factor for Tikhonov regularization. None means no
+        Tikhonov regularization.
+    soft : float | None
+         Softness factor for the light-curve loss term. None means no
+         softening.
+    bins : torch.Tensor
+        Frequency integration grid. If None, linspace(-3, 3, 9) is used.
+    """
+
+    def __init__(self, lmbd: float | None, soft: float | None, bins: Tensor | None) -> None:
+        if bins is None:
+            bins = torch.linspace(-3.0, 3.0, 9)
+        super().__init__(lmbd=lmbd, soft=soft, bins=bins)
+        self.ep_func = torch.vmap(lambda z: epps_pulley_standard_norm(z, bins=self.bins.to(z.device)))
+
+    def lc_term(self, flux: Tensor, err: Tensor) -> Tensor:
+        """Compute the loss
+
+        Parameters
+        ----------
+        flux : torch.Tensor
+            Corrected flux vector, (n_batch, n_src,)
+        err : jnp.ndarray
+            Corrected error vector, (n_batch, n_src,)
+
+        Returns
+        -------
+        torch.Tensor, of shape ()
+            Loss value
+        """
+        z = self.compute_z(flux, err)
+        stat = self.ep_func(z)
+        return torch.mean(stat)
+
+
+def epps_pulley_whiten_loss(
+    *,
+    lmbd: float | None,
+    soft: float | None,
+    kind: Literal["accum"] | Literal["mean"],
+    bins: Tensor | None = None,
+) -> EPWhitenBasedLoss:
+    """Construct an KL divergence loss object
+
+    Parameters
+    ----------
+    lmbd : float | None
+        Penalty term factor for Tikhonov regularization. None means no
+        Tikhonov regularization.
+    soft : float | None
+        Softness parameter or no softness (`None`).
+    kind : Literal['accum', 'mean']
+        How to compute the loss for multiple light curves:
+        - 'accum': use whiten sources from all light curves and compute the KL
+          divergence for it.
+        - 'mean': compute KL divergence per light curve and average them.
+    bins : torch.Tensor or None
+        Edges of integration bins in the frequency space. None uses pre-defined
+        grid.
+    """
+    match kind:
+        case "accum":
+            return EBWhitenTotal(lmbd=lmbd, soft=soft, bins=bins)
+        case "mean":
+            return EBWhitenLc(lmbd=lmbd, soft=soft, bins=bins)
     raise ValueError(f"Unknown loss kind: {kind}")

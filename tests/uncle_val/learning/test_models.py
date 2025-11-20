@@ -8,9 +8,9 @@ from numpy.testing import assert_allclose
 from uncle_val.datasets.fake import fake_non_variable_lcs
 from uncle_val.learning.losses import (
     UncleLoss,
+    epps_pulley_whiten_loss,
     kl_divergence_whiten_loss,
     minus_ln_chi2_prob_loss,
-    epps_pulley_whiten_loss,
 )
 from uncle_val.learning.lsdb_dataset import LSDBIterableDataset
 from uncle_val.learning.models import ConstantModel, LinearModel, MLPModel, UncleModel
@@ -127,7 +127,8 @@ def test_model(model):
 
 
 @pytest.mark.parametrize(
-    "loss_prod", [
+    "loss_prod",
+    [
         minus_ln_chi2_prob_loss,
         kl_divergence_whiten_loss,
         epps_pulley_whiten_loss,

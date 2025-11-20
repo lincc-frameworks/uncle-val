@@ -5,7 +5,9 @@ from torch import Tensor, tensor
 from torch.distributions import Distribution
 
 
-def _auto_bins(bins: Tensor | Literal["auto"], *, n_data: int, device: torch.device, half_width=5.0, n_bins=11) -> Tensor:
+def _auto_bins(
+    bins: Tensor | Literal["auto"], *, n_data: int, device: torch.device, half_width=5.0, n_bins=11
+) -> Tensor:
     """Produce bins for auto-binning"""
     if isinstance(bins, torch.Tensor):
         return bins
@@ -79,7 +81,7 @@ def anderson_darling(distr: Distribution, vector: Tensor) -> Tensor:
     return ad_statistic
 
 
-def g_test(distr: Distribution, vector: Tensor, *, bins: Tensor | int = 'auto') -> Tensor:
+def g_test(distr: Distribution, vector: Tensor, *, bins: Tensor | int = "auto") -> Tensor:
     """Performs G-test
 
     https://en.wikipedia.org/wiki/G-test

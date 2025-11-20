@@ -18,6 +18,7 @@ def run_dp1_mlp(
     val_batch_size: int,
     output_root: str | Path,
     loss_fn: UncleLoss,
+    val_losses: dict[str, UncleLoss] | None = None,
     load_model_path: str | Path | None = None,
     lr: float = 1e-5,
     start_tfboard: bool = False,
@@ -49,8 +50,11 @@ def run_dp1_mlp(
         Where to save the intermediate results.
     snapshot_every : int
         Snapshot model and metrics every this much training batches.
-    loss_fn : Callable or None
+    loss_fn : UncleLoss
         Loss function to use, by default soften Χ² is used.
+    val_losses : dict[str, UncleLoss] or None
+        Extra losses to compute on validation set and record, it maps name to
+        loss function. If None, an empty dictionary is used.
     load_model_path : str or Path or None
         Pre-trained model to continue training from.
     lr : float
@@ -95,11 +99,15 @@ def run_dp1_mlp(
     else:
         model = torch.load(load_model_path, weights_only=False, map_location=device)
 
+    if val_losses is None:
+        val_losses = {}
+
     model_path = training_loop(
         catalog=catalog,
         columns=columns_no_prefix,
         model=model,
         loss_fn=loss_fn,
+        val_losses=val_losses,
         lr=lr,
         n_workers=n_workers,
         n_src=n_src,

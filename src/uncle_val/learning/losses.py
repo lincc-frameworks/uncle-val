@@ -432,7 +432,7 @@ class EPWhitenBasedLoss(SoftenLoss, ABC):
 
     def penalty_scale_factor(self, shape) -> Tensor:
         """Multiplication factor to use with penalty loss."""
-        return torch.tensor(1e-3)
+        return torch.tensor(1.0)
 
 
 class EBWhitenTotal(EPWhitenBasedLoss):
@@ -471,7 +471,7 @@ class EBWhitenTotal(EPWhitenBasedLoss):
             Loss value
         """
         z = self.compute_z(flux, err)
-        return epps_pulley_standard_norm(z.flatten(), bins=self.bins.to(z.device))
+        return z.flatten().size(0) * epps_pulley_standard_norm(z.flatten(), bins=self.bins.to(z.device))
 
 
 class EBWhitenLc(EPWhitenBasedLoss):
@@ -493,7 +493,9 @@ class EBWhitenLc(EPWhitenBasedLoss):
         if bins is None:
             bins = torch.linspace(-3.0, 3.0, 9)
         super().__init__(lmbd=lmbd, soft=soft, bins=bins)
-        self.ep_func = torch.vmap(lambda z: epps_pulley_standard_norm(z, bins=self.bins.to(z.device)))
+        self.ep_func = torch.vmap(
+            lambda z: z.size(0) * epps_pulley_standard_norm(z, bins=self.bins.to(z.device))
+        )
 
     def lc_term(self, flux: Tensor, err: Tensor) -> Tensor:
         """Compute the loss

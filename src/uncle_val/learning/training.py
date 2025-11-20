@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 from torch import Tensor
 from torch.optim import Optimizer
 
@@ -49,10 +51,27 @@ def train_step(
 def evaluate_loss(
     *,
     model: UncleModel,
-    loss: UncleLoss,
+    loss: Callable[[Tensor, Tensor, Tensor], object],
     batch: Tensor,
-):
-    """Evaluate and return loss"""
+) -> object:
+    """Evaluate and return loss.
+
+    Can be used on any callable, not necessary `UncleLoss` instance.
+
+    Parameters
+    ----------
+    model : UncleModel
+        Model to evaluate.
+    loss : callable
+        func(flux, err, model_output) -> loss_value
+    batch : torch.Tensor
+        Data to evaluate on.
+
+    Returns
+    -------
+    object
+        Loss function output.
+    """
     flux, err = batch[..., 0], batch[..., 1]
 
     model_output = model(batch)

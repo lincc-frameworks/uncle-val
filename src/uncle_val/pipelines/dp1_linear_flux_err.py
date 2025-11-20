@@ -20,6 +20,7 @@ def run_dp1_linear_flux_err(
     val_batch_size: int,
     output_root: str | Path,
     loss_fn: UncleLoss,
+    val_losses: dict[str, UncleLoss] | None = None,
     start_tfboard: bool = False,
     log_activations: bool = False,
     snapshot_every: int = 128,
@@ -47,8 +48,11 @@ def run_dp1_linear_flux_err(
         Batch size for validation.
     snapshot_every : int
         Snapshot model and metrics every this much training batches.
-    loss_fn : Callable or None
+    loss_fn : UncleLoss
         Loss function to use, by default soften Χ² is used.
+    val_losses : dict[str, UncleLoss] or None
+        Extra losses to compute on validation set and record, it maps name to
+        loss function. If None, an empty dictionary is used.
     start_tfboard : bool
         Whether to start a TensorBoard session.
     log_activations : bool
@@ -80,11 +84,15 @@ def run_dp1_linear_flux_err(
 
     model = LinearModel(d_input=2, d_output=1).to(device=device)
 
+    if val_losses is None:
+        val_losses = {}
+
     return training_loop(
         catalog=catalog,
         columns=None,
         model=model,
         loss_fn=loss_fn,
+        val_losses=val_losses,
         lr=3e-4,
         n_workers=n_workers,
         n_src=n_src,

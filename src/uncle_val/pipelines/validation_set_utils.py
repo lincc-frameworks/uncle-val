@@ -1,4 +1,5 @@
 import shutil
+from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
@@ -111,48 +112,62 @@ class ActivationHistHook:
 def get_val_stats(
     *,
     model_path: str | Path,
-    loss: UncleLoss,
+    losses: dict[str, UncleLoss],
     data_loader: DataLoader,
     device: torch.device,
     activation_bins: np.ndarray | None,
-) -> float:
+) -> dict[str, object]:
     """Computes the loss for validation set with serialized model
 
     Parameters
     ----------
     model_path : Path or str
         Path to Uncle model
-    loss : UncleLoss
-        Loss function to use for validation
+    losses : dict[str, UncleLoss]
+        Loss functions to use for validation
     data_loader : DataLoader
         DataLoader which yields validation data.
     device : torch.device
         PyTorch device to for the data and for the model.
     activation_bins : np.ndarray | None
         If specified, return the histogram of the activations.
+
+    Returns
+    -------
+    dict[str, result]
+        Result of calculation: float number for each loss and activations
+        histogram if bins are given (under "__activations_hist__" key).
     """
     model = torch.load(model_path, weights_only=False, map_location=device)
+
+    def loss_fn(*args, **kwargs):
+        return {name: fn(*args, **kwargs).cpu().detach().numpy() for name, fn in losses.items()}
 
     if activation_bins is not None:
         hook = ActivationHistHook(torch.tensor(activation_bins.astype(np.float32), device=device))
         model.register_forward_hook(hook)
 
-    sum_val_loss = 0.0
-    n_val_batches_used = 0
+    sum_loss = defaultdict(float)
+    n_batches_used = 0
     for val_batch in data_loader:
-        sum_val_loss += (
-            evaluate_loss(
-                model=model,
-                loss=loss,
-                batch=val_batch,
-            )
-            .cpu()
-            .detach()
-            .numpy()
+        batch_loss = evaluate_loss(
+            model=model,
+            loss=loss_fn,
+            batch=val_batch,
         )
-        n_val_batches_used += 1
-    mean_val_loss = sum_val_loss / n_val_batches_used
+        for name, value in batch_loss.items():
+            sum_loss[name] += value
+        n_batches_used += 1
+    result = {name: value / n_batches_used for name, value in sum_loss.items()}
 
-    if activation_bins is None:
-        return mean_val_loss
-    return mean_val_loss, hook.counts
+    if activation_bins is not None:
+        result["__activations_hist__"] = hook.counts
+
+    # Free CUDA memory
+    if device.type == "cuda":
+        del val_batch
+        del model
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+
+    return result

@@ -33,6 +33,7 @@ def training_loop(
     val_batch_size: int,
     snapshot_every: int,
     loss_fn: UncleLoss,
+    val_losses: dict[str, UncleLoss],
     lr: float,
     start_tfboard: bool,
     log_activations: bool,
@@ -62,8 +63,11 @@ def training_loop(
         Batch size for validation set.
     snapshot_every : int
         Snapshot model and metrics every this many training batches.
-    loss_fn : Callable or None
+    loss_fn : UncleLoss
         Loss function to use, by default soften Χ² is used.
+    val_losses : dict[str, UncleLoss]
+        Extra losses to compute on validation set and record, it maps name to
+        loss function.
     lr : float
         Learning rate.
     start_tfboard : bool
@@ -84,6 +88,8 @@ def training_loop(
     """
     n_train_batches = int(np.ceil(n_lcs / train_batch_size))
 
+    device = torch.device(device)
+
     output_root = Path(output_root)
     output_dir = Path(output_root) / datetime.now().strftime("%Y-%m-%d_%H-%M")
     intermediate_model_dir = output_dir / "models"
@@ -95,7 +101,7 @@ def training_loop(
     summary_writer = SummaryWriter(log_dir=str(output_dir))
 
     optimizer = Adam(model.parameters(), lr=lr)
-    scheduler = ReduceLROnPlateau(optimizer, factor=10**-0.5, patience=16, cooldown=32)
+    scheduler = ReduceLROnPlateau(optimizer, factor=10**-0.5, patience=16, cooldown=32, eps=1e-10)
     model = model.to(device)
 
     with Client(n_workers=n_workers, memory_limit="8GB", threads_per_worker=1) as client:
@@ -115,7 +121,7 @@ def training_loop(
         )
 
         with ValidationDataLoaderContext(validation_dataset_lsdb, tmp_validation_dir) as val_dataloader:
-            mean_val_loss_future: Future | None = None
+            val_stats_future: Future | None = None
             mean_val_loss_i = 0
 
             best_val_loss = tensor(float("inf"), device=device)
@@ -129,7 +135,7 @@ def training_loop(
 
             def snapshot(i):
                 nonlocal \
-                    mean_val_loss_future, \
+                    val_stats_future, \
                     mean_val_loss_i, \
                     best_val_loss, \
                     best_model_path, \
@@ -140,13 +146,17 @@ def training_loop(
                 model.eval()
 
                 current_model_path = intermediate_model_dir / f"{model_name}_{i:09d}.pt"
-                torch.save(model, current_model_path)
+                if not current_model_path.exists():
+                    torch.save(model, current_model_path)
 
-                if mean_val_loss_future is None:
+                if val_stats_future is None:
                     mean_val_loss = tensor(float("inf"))
                 else:
+                    val_stats = val_stats_future.result()
+                    mean_val_loss = val_stats.pop("__training_loss__")
+                    summary_writer.add_scalar("Mean validation loss", mean_val_loss, mean_val_loss_i)
                     if log_activations:
-                        mean_val_loss, activation_hist = mean_val_loss_future.result()
+                        activation_hist = val_stats.pop("__activations_hist__")
                         summary_writer.add_histogram(
                             "Validation activations",
                             np.repeat(
@@ -155,17 +165,23 @@ def training_loop(
                             ),
                             mean_val_loss_i,
                         )
-                    else:
-                        mean_val_loss = mean_val_loss_future.result()
-                    summary_writer.add_scalar("Mean validation loss", mean_val_loss, mean_val_loss_i)
-                mean_val_loss_future = client.submit(
-                    get_val_stats,
-                    model_path=current_model_path,
-                    loss=loss_fn,
-                    data_loader=val_dataloader,
-                    device=device,
-                    activation_bins=activation_bins,
-                )
+                    for mean_val_loss_name, mean_val_loss_value in val_stats.items():
+                        summary_writer.add_scalar(
+                            f"Mean validation loss: {mean_val_loss_name}",
+                            mean_val_loss_value,
+                            mean_val_loss_i,
+                        )
+                if mean_val_loss_i < n_train_batches - 1:
+                    val_stats_future = client.submit(
+                        get_val_stats,
+                        model_path=current_model_path,
+                        losses={"__training_loss__": loss_fn} | val_losses,
+                        data_loader=val_dataloader,
+                        device=device,
+                        activation_bins=activation_bins,
+                    )
+                else:
+                    val_stats_future = None
                 mean_val_loss_i = i
 
                 n_train_batches_used = snapshot_every if i % snapshot_every == 0 else i % snapshot_every

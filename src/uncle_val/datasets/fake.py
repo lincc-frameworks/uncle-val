@@ -33,7 +33,7 @@ def _fake_non_variable_lcs(
         append_columns=True,
     )
     nf["id"] = np.arange(len(nf))
-    nf["ra"] = np.degrees(rng.uniform(low=0.0, high=360.0, size=len(nf)))
+    nf["ra"] = rng.uniform(low=0.0, high=360.0, size=len(nf))
     nf["dec"] = np.degrees(np.arcsin(rng.uniform(-1.0, 1.0, size=len(nf))))
 
     return nf

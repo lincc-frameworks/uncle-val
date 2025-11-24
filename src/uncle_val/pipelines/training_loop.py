@@ -88,6 +88,8 @@ def training_loop(
     """
     n_train_batches = int(np.ceil(n_lcs / train_batch_size))
 
+    device = torch.device(device)
+
     output_root = Path(output_root)
     output_dir = Path(output_root) / datetime.now().strftime("%Y-%m-%d_%H-%M")
     intermediate_model_dir = output_dir / "models"

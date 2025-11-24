@@ -169,5 +169,5 @@ def get_val_stats(
         del model
         torch.cuda.empty_cache()
         torch.cuda.synchronize()
-    
+
     return result

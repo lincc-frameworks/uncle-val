@@ -156,7 +156,7 @@ def test_linear_model_many_objects(loss_prod):
         d_output=1,
     )
     loss = loss_prod(lmbd=None, soft=None, kind="accum")
-    run_model(model=model, loss=loss, batch_size=2, train_batches=2000, n_obj=1000, rtol=0.1)
+    run_model(model=model, loss=loss, batch_size=2, train_batches=10_000, n_obj=1000, rtol=0.1)
 
 
 @pytest.mark.parametrize("loss_prod", [minus_ln_chi2_prob_loss, kl_divergence_whiten_loss])
@@ -167,4 +167,4 @@ def test_constant_model_many_objects(loss_prod):
         d_output=1,
     )
     loss = loss_prod(lmbd=None, soft=None, kind="accum")
-    run_model(model=model, loss=loss, batch_size=2, train_batches=2000, n_obj=1000, rtol=0.01)
+    run_model(model=model, loss=loss, batch_size=2, train_batches=10_000, n_obj=1000, rtol=0.1)

@@ -163,11 +163,4 @@ def get_val_stats(
     if activation_bins is not None:
         result["__activations_hist__"] = hook.counts
 
-    # Free CUDA memory
-    if device.type == "cuda":
-        del val_batch
-        del model
-        torch.cuda.empty_cache()
-        torch.cuda.synchronize()
-
     return result

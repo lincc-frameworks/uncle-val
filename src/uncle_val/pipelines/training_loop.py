@@ -21,6 +21,28 @@ from uncle_val.pipelines.utils import _launch_tfboard
 from uncle_val.pipelines.validation_set_utils import ValidationDataLoaderContext, get_val_stats
 
 
+def get_val_workers(client: Client, device: torch.device) -> list[object] | None:
+    """Get list of workers good to run the validation pipeline
+
+    Parameters
+    ----------
+    client : dask.distributed.Client
+        Dask client to be used for validation
+    device : torch.device
+        Torch device to be used for validation
+
+    Return
+    ------
+    list or workers or None
+        Value to pass into client.submit(..., workers=...)
+    """
+    # Run CUDA background tasks always on a single process to not allocate too much GPU memory
+    if device.type == "cuda":
+        all_workers = sorted(client.cluster.workers)
+        return all_workers[:1]
+    return None
+
+
 def training_loop(
     *,
     catalog: lsdb.Catalog,
@@ -179,6 +201,7 @@ def training_loop(
                         data_loader=val_dataloader,
                         device=device,
                         activation_bins=activation_bins,
+                        workers=get_val_workers(client, device),
                     )
                 else:
                     val_stats_future = None

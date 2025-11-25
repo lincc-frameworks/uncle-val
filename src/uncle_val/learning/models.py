@@ -86,13 +86,13 @@ class UncleModel(torch.nn.Module):
 
     The output is either 1-d or 2-d:
     - 0th index is -ln(uu), so u = exp(-output[0])
-    - 1st index is ln(1 + s), so s = exp(output[1]) - 1
+    - 1st index is s
     The original residual is defined as: (flux - avg_flux) / err,
     where avg_flux is sum(flux / err^2) / sum(1 / err^2).
     The transformed uncertainty is defined is corrected_err = u*err,
-    the transformed flux is corrected_flux = flux * (1 + s),
-    so the transformed residual is (flux (1 + s) - avg_flux) / (u * err),
-    where avg_flux is sum(flux / (u * err)^2) / sum(1 / (u * err)^2).
+    the transformed flux is corrected_flux = flux + s * u * err,
+    so the transformed residual is (flux + s * u * err - avg_flux) / (u * err),
+    where avg_flux is sum[(flux + s * u * err) / (u * err)^2] / sum(1 / (u * err)^2).
 
     Parameters
     ----------
@@ -129,9 +129,7 @@ class UncleModel(torch.nn.Module):
         output = self.module(self.norm_inputs(inputs))
         # u, uncertainty underestimation
         output[..., 0] = torch.exp(-output[..., 0])
-        # s, flux shift
-        if self.outputs_s:
-            output[..., 1] = torch.expm1(output[..., 1])
+        # We don't scale s, so nothing to do here
         return output
 
     def save_onnx(self, path: Path | str) -> None:

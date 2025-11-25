@@ -81,7 +81,7 @@ def evaluate_loss(
 
     if model.outputs_s:
         s = model_output[..., 1]
-        corrected_flux = flux * (1.0 + s)
+        corrected_flux = flux + s * corrected_err
     else:
         corrected_flux = flux
 

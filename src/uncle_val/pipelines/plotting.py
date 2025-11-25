@@ -108,7 +108,7 @@ def _extract_hists(
             corrected_err = uu * err
             if model.outputs_s:
                 sf = outputs[..., 1].flatten()
-                corrected_x = (1.0 + sf) * x
+                corrected_x = x + sf * corrected_err
             else:
                 corrected_x = x
 

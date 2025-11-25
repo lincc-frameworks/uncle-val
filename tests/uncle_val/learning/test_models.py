@@ -104,20 +104,20 @@ def run_model(
     [
         MLPModel(
             d_middle=(3, 5, 6),
-            d_output=2,
+            outputs_s=True,
             dropout=0.2,
         ),
         MLPModel(
             input_names=["flux", "err", "object_mag", "is_g_band"],
-            d_output=1,
+            outputs_s=False,
             dropout=None,
         ),
         LinearModel(
             input_names=["mag", "magerr", "extendedness", "sky_background", "zp"],
-            d_output=1,
+            outputs_s=False,
         ),
         ConstantModel(
-            d_output=2,
+            outputs_s=True,
         ),
     ],
 )
@@ -141,7 +141,7 @@ def test_model(model):
 def test_mlp_model_many_objects(loss_prod, soft, lmbd, kind):
     """Fit MLPModel for a constant u function with many objects"""
     model = MLPModel(
-        d_output=1,
+        outputs_s=False,
         dropout=None,
     )
     loss = loss_prod(lmbd=lmbd, soft=soft, kind=kind)
@@ -153,7 +153,7 @@ def test_mlp_model_many_objects(loss_prod, soft, lmbd, kind):
 def test_linear_model_many_objects(loss_prod):
     """Fit MLPModel for a constant u function with many objects"""
     model = LinearModel(
-        d_output=1,
+        outputs_s=False,
     )
     loss = loss_prod(lmbd=None, soft=None, kind="accum")
     run_model(model=model, loss=loss, batch_size=2, train_batches=10_000, n_obj=1000, rtol=0.1)
@@ -164,7 +164,7 @@ def test_linear_model_many_objects(loss_prod):
 def test_constant_model_many_objects(loss_prod):
     """Fit MLPModel for a constant u function with many objects"""
     model = ConstantModel(
-        d_output=1,
+        outputs_s=False,
     )
     loss = loss_prod(lmbd=None, soft=None, kind="accum")
     run_model(model=model, loss=loss, batch_size=2, train_batches=10_000, n_obj=1000, rtol=0.1)

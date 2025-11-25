@@ -82,7 +82,7 @@ def run_dp1_linear_flux_err(
         lambda df: df.drop(columns=["r_psfMag", "coord_ra", "coord_dec", "extendedness"])
     )
 
-    model = LinearModel(d_input=2, d_output=1).to(device=device)
+    model = LinearModel(outputs_s=False).to(device=device)
 
     if val_losses is None:
         val_losses = {}

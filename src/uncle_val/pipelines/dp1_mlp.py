@@ -95,7 +95,9 @@ def run_dp1_mlp(
     columns_no_prefix = [col.removeprefix("lc.") for col in columns]
 
     if load_model_path is None:
-        model = MLPModel(input_names=columns_no_prefix, d_middle=(300, 300, 500), dropout=None, d_output=1)
+        model = MLPModel(
+            input_names=columns_no_prefix, d_middle=(300, 300, 500), dropout=None, outputs_s=False
+        )
     else:
         model = torch.load(load_model_path, weights_only=False, map_location=device)
 

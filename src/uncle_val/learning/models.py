@@ -86,26 +86,27 @@ class UncleModel(torch.nn.Module):
 
     The output is either 1-d or 2-d:
     - 0th index is -ln(uu), so u = exp(-output[0])
-    - 1st index is ln(1 + s), so s = exp(output[1]) - 1
+    - 1st index is s
     The original residual is defined as: (flux - avg_flux) / err,
     where avg_flux is sum(flux / err^2) / sum(1 / err^2).
     The transformed uncertainty is defined is corrected_err = u*err,
-    the transformed flux is corrected_flux = flux * (1 + s),
-    so the transformed residual is (flux (1 + s) - avg_flux) / (u * err),
-    where avg_flux is sum(flux / (u * err)^2) / sum(1 / (u * err)^2).
+    the transformed flux is corrected_flux = flux + s * u * err,
+    so the transformed residual is (flux + s * u * err - avg_flux) / (u * err),
+    where avg_flux is sum[(flux + s * u * err) / (u * err)^2] / sum(1 / (u * err)^2).
 
     Parameters
     ----------
     input_names : list of str
         Names of input dimensions, used for defining normalizers and for the
         dimensionality of the first model layer.
-    d_output : int
-        Number of output parameters, 1 for u, 2 for [u, l].
+    outputs_s : bool
+        False would make the model to return `u` only, True would return both
+        `u` and `s`.
     """
 
     module: torch.nn.Module
 
-    def __init__(self, *, input_names: Sequence[str] = ("flux", "err"), d_output: int) -> None:
+    def __init__(self, *, input_names: Sequence[str], outputs_s: bool) -> None:
         super().__init__()
 
         self.input_names = list(input_names)
@@ -113,10 +114,8 @@ class UncleModel(torch.nn.Module):
         self.scaler = UncleScaler()
         self.normalizers = self.scaler.normalizers(self.input_names)
 
-        if d_output not in {1, 2}:
-            raise ValueError("d_output must be 1 (for u) or 2 (for u and s)")
-        self.d_output = d_output
-        self.outputs_s = d_output == 2
+        self.outputs_s = outputs_s
+        self.d_output = 1 + int(self.outputs_s)
 
     def norm_inputs(self, inputs: torch.Tensor) -> torch.Tensor:
         """Normalizes batch"""
@@ -130,9 +129,7 @@ class UncleModel(torch.nn.Module):
         output = self.module(self.norm_inputs(inputs))
         # u, uncertainty underestimation
         output[..., 0] = torch.exp(-output[..., 0])
-        # s, flux shift
-        if self.outputs_s:
-            output[..., 1] = torch.expm1(output[..., 1])
+        # We don't scale s, so nothing to do here
         return output
 
     def save_onnx(self, path: Path | str) -> None:
@@ -167,8 +164,9 @@ class MLPModel(UncleModel):
         dimensionality of the first model layer.
     d_middle : list of int
         Size of hidden module, e.g. [64, 32, 16]
-    d_output : int
-        Number of output parameters, 1 for u, 2 for [u, l].
+    outputs_s : bool
+        False would make the model to return `u` only, True would return both
+        `u` and `s`.
     dropout : float | None
         Dropout probability, do not use dropout layer if None.
     """
@@ -178,10 +176,10 @@ class MLPModel(UncleModel):
         *,
         input_names: Sequence[str] = ("flux", "err"),
         d_middle: Sequence[int] = (300, 300, 400),
-        d_output: int = 1,
+        outputs_s: bool,
         dropout: None | float = None,
     ):
-        super().__init__(input_names=input_names, d_output=d_output)
+        super().__init__(input_names=input_names, outputs_s=outputs_s)
         self.d_middle = list(d_middle)
         self.dropout = dropout
 
@@ -201,15 +199,16 @@ class LinearModel(UncleModel):
 
     Parameters
     ----------
-    dinput_names : list of str
+    input_names : list of str
         Names of input dimensions, used for defining normalizers and for the
         dimensionality of the first model layer.
-    d_output : int
-        Number of output parameters, 1 for u, 2 for [u, l].
+    outputs_s : bool
+        False would make the model to return `u` only, True would return both
+        `u` and `s`.
     """
 
-    def __init__(self, *, input_names: Sequence[str] = ("flux", "err"), d_output: int) -> None:
-        super().__init__(input_names=input_names, d_output=d_output)
+    def __init__(self, *, input_names: Sequence[str] = ("flux", "err"), outputs_s: bool) -> None:
+        super().__init__(input_names=input_names, outputs_s=outputs_s)
 
         self.module = torch.nn.Linear(self.d_input, self.d_output, bias=True)
 
@@ -219,12 +218,13 @@ class ConstantModel(UncleModel):
 
     Parameters
     ----------
-    d_output : int
-        Number of output parameters, 1 for u, 2 for [u, l].
+    outputs_s : bool
+        False would make the model to return `u` only, True would return both
+        `u` and `s`.
     """
 
-    def __init__(self, d_output: int) -> None:
-        super().__init__(input_names=[], d_output=d_output)
+    def __init__(self, outputs_s: bool) -> None:
+        super().__init__(input_names=[], outputs_s=outputs_s)
 
         self.vector = torch.nn.Parameter(torch.zeros(self.d_output))
 

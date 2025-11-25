@@ -20,6 +20,7 @@ def run_dp1_mlp(
     loss_fn: UncleLoss,
     val_losses: dict[str, UncleLoss] | None = None,
     load_model_path: str | Path | None = None,
+    model_kwargs: dict[str, object] | None = None,
     lr: float = 1e-5,
     start_tfboard: bool = False,
     log_activations: bool = False,
@@ -57,6 +58,8 @@ def run_dp1_mlp(
         loss function. If None, an empty dictionary is used.
     load_model_path : str or Path or None
         Pre-trained model to continue training from.
+    model_kwargs : dict | None
+        MLPModel kwargs.
     lr : float
         Learning rate.
     start_tfboard : bool
@@ -95,7 +98,10 @@ def run_dp1_mlp(
     columns_no_prefix = [col.removeprefix("lc.") for col in columns]
 
     if load_model_path is None:
-        model = MLPModel(input_names=columns_no_prefix, d_middle=(300, 300, 500), dropout=None, d_output=1)
+        actual_model_kwargs = dict(outputs_s=False)
+        if model_kwargs is not None:
+            actual_model_kwargs.update(model_kwargs)
+        model = MLPModel(input_names=columns_no_prefix, **actual_model_kwargs)
     else:
         model = torch.load(load_model_path, weights_only=False, map_location=device)
 

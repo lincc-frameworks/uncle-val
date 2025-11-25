@@ -274,15 +274,18 @@ def _plot_magn_vs_uu(
     z_bins: np.ndarray,
     mag_centers: np.ndarray,
 ):
+    means = []
     uu = []
     for mag_bin_idx in range(len(mag_bins) - 1):
-        _df, _mean, std = _aggregate_hists(
+        _df, mean, std = _aggregate_hists(
             df.query(f"mag_bin_idx == {mag_bin_idx}"), band, z_centers=z_centers, z_width=z_width
         )
+        means.append(mean)
         uu.append(std)
+    means = np.array(means)
     uu = np.array(uu)
 
-    mag_, uu = mag_centers[uu > 0], uu[uu > 0]
+    mag_, means, uu = mag_centers[uu > 0], means[uu > 0], uu[uu > 0]
 
     samples_mag = df.query(f"band == {band!r}")["samples.object_mag"]
     samples_z = df.query(f"band == {band!r}")["samples.z"]
@@ -290,8 +293,8 @@ def _plot_magn_vs_uu(
     ax.set_title(f"Whiten Sources, {band}-band")
     ax.scatter(samples_mag, samples_z, color="grey", marker=".", s=1, alpha=0.5, label="Samples")
     ax.hlines([1.0, -1.0], *ax.get_xlim(), color="red", ls="--", alpha=0.3)
-    ax.plot(mag_, uu, color="blue", label="Std (uncertainty underestimation)")
-    ax.plot(mag_, -uu, color="blue")
+    ax.plot(mag_, means + uu, color="blue", label="Std (uncertainty underestimation)")
+    ax.plot(mag_, means - uu, color="blue")
     ax.set_xlabel("Object PSF Magnitude")
     ax.set_ylabel("Whiten Signal")
     ax.set_ylim([z_bins[0], z_bins[-1]])

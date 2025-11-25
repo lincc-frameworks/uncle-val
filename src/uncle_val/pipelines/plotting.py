@@ -292,8 +292,8 @@ def _plot_magn_vs_uu(
 
     ax.set_title(f"Whiten Sources, {band}-band")
     ax.scatter(samples_mag, samples_z, color="grey", marker=".", s=1, alpha=0.5, label="Samples")
-    ax.hlines([1.0, -1.0], *ax.get_xlim(), color="red", ls="--", alpha=0.3)
-    ax.plot(mag_, means + uu, color="blue", label="Std (uncertainty underestimation)")
+    ax.hlines([1.0, -1.0], *ax.get_xlim(), color="red", ls="--", alpha=0.3, label="Perfect mean ± std")
+    ax.plot(mag_, means + uu, color="blue", label="mean ± std (std is uncertainty underestimation)")
     ax.plot(mag_, means - uu, color="blue")
     ax.set_xlabel("Object PSF Magnitude")
     ax.set_ylabel("Whiten Signal")

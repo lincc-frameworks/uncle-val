@@ -103,6 +103,26 @@ def _filter_variable_lcs(df, *, nested_flux_col, nested_err_col, var_detector):
     return df[~is_variable]
 
 
+def _xy_encode_detector(arr) -> tuple[np.ndarray, np.ndarray]:
+    arr = np.asarray(arr)
+    row, column = np.divmod(arr, 3)
+    x = column - 1.0
+    y = 1.0 - row
+    return x, y
+
+
+def _polar_encode_detector(arr) -> dict[str, np.ndarray]:
+    """Convert detectorId (0...8) to polar ρ, cos(ϕ), sin(ϕ) or centers"""
+    arr = np.asarray(arr)
+    x, y = _xy_encode_detector(arr)
+    rho = np.hypot(x, y)
+    # We go through angle, just for the case of both x=y=0
+    angle = np.arctan2(y, x)
+    cos_phi = np.cos(angle)
+    sin_phi = np.sin(angle)
+    return {"detector_rho": rho, "detector_cos_phi": cos_phi, "detector_sin_phi": sin_phi}
+
+
 def _read_ccd_visit_table(path, columns):
     df = pd.read_parquet(path, columns=columns, dtype_backend="pyarrow")
     # Patch seeing
@@ -110,6 +130,9 @@ def _read_ccd_visit_table(path, columns):
         seeing = pa.array(df["seeing"])
         replace_value = np.nanmean(seeing)
         df["seeing"] = pa.compute.replace_with_mask(seeing, pa.compute.is_nan(seeing), replace_value)
+    if columns is None or "detectorId" in columns:
+        detector_cols = _polar_encode_detector(df["detectorId"])
+        df = df.assign(**detector_cols)
     return df
 
 
@@ -131,7 +154,7 @@ def _add_visit_info(df, *, lc_col, ccd_visits_path, ccd_visits_cols):
         )
         .drop(
             # We keep detector only
-            columns=["visit", "visitId", "detectorId"],
+            columns=["visit", "visitId", "detector", "detectorId"],
         )
         .set_index(
             ordinal_idx_name,

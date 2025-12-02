@@ -94,6 +94,9 @@ def run_dp1_mlp(
         "lc.skyBg",
         "lc.seeing",
         "lc.expTime",
+        "lc.detector_rho",
+        "lc.detector_cos_phi",
+        "lc.detector_sin_phi",
     ] + [f"is_{band}_band" for band in bands]
     columns_no_prefix = [col.removeprefix("lc.") for col in columns]
 

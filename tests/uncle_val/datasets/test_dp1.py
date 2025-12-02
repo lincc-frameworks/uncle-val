@@ -33,7 +33,9 @@ def test_dp1_catalog_multi_band(dp1_root, img, n_obj):
         "expTime",
         "seeing",
         "skyBg",
-        "detector",
+        "detector_rho",
+        "detector_cos_phi",
+        "detector_sin_phi",
         "x",
         "err",
     ]

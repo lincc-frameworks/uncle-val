@@ -11,7 +11,7 @@ import pyarrow.parquet as pq
 def parse_args(argv=None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="Make a parquet file with LSSTCam detector center coorinates. "
+        description="Make a parquet file with LSSTCam detector center coordinates. "
         "Requires LSST stack environment."
     )
     parser.add_argument(
@@ -45,6 +45,7 @@ def main(argv=None):
         data["focal_plane_y"].append(focal_plane.y)
 
     table = pa.table(data)
+    arg.output.parent.mkdir(parents=True, exist_ok=True)
     pq.write_table(table, arg.output)
 
 

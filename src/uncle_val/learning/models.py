@@ -1,10 +1,11 @@
+import math
 from collections.abc import Callable, Sequence
 from functools import cached_property
 from pathlib import Path
 
 import torch
 
-from uncle_val.utils.mag_flux import mag2flux
+from uncle_val.utils.mag_flux import fluxerr2magerr, mag2flux, magerr2fluxerr
 
 
 class UncleScaler:
@@ -235,4 +236,53 @@ class ConstantModel(UncleModel):
     def module(self, inputs: torch.Tensor) -> torch.Tensor:
         """Compute the output of the model"""
         shape = inputs.shape[:-1]
-        return self.vector.repeat(*shape, 1)
+        return self.vector.repeat(shape + (self.d_output,))
+
+
+class ConstantMagErrModel(UncleModel):
+    """Uncle function returns constant"""
+
+    flux_floor = mag2flux(30.0)
+    ln10_0_4 = 0.4 * math.log(10.0)
+
+    def __init__(self, input_names: Sequence[str]) -> None:
+        super().__init__(input_names=input_names, outputs_s=False)
+
+        if "flux" in input_names:
+            self.flux_column = self.input_names.index("flux")
+        elif "x" in input_names:
+            self.flux_column = self.input_names.index("x")
+        else:
+            raise ValueError("input_names must include flux name, either 'flux' or 'x'")
+
+        if "err" in input_names:
+            self.err_column = self.input_names.index("err")
+        else:
+            raise ValueError("input_names must include 'err'")
+
+        self.addition_centi_mag_err = torch.nn.Parameter(torch.ones(1))
+
+        self.normalizers = None
+
+    def norm_inputs(self, inputs: torch.Tensor) -> torch.Tensor:
+        """Normalizes batch, here we do nothing because we don't use inputs"""
+        return inputs
+
+    def module(self, inputs: torch.Tensor) -> torch.Tensor:
+        """Returns extra magnitude error multiplied by 100"""
+        shape = inputs.shape[:-1]
+        return self.vector.repeat(shape + (self.d_output,))
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        """Compute the output of the model"""
+        systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs))
+
+        flux = torch.maximum(
+            inputs[..., self.flux_column], torch.tensor(self.flux_floor, device=inputs.device)
+        )
+        flux_err = inputs[..., self.err_column]
+        mag_err = fluxerr2magerr(flux=flux, flux_err=flux_err)
+        new_mag_err = torch.hypot(mag_err, systematic_mag_err)
+        new_flux_err = magerr2fluxerr(flux=flux, mag_err=new_mag_err)
+        u = new_flux_err / flux_err
+        return u[..., None]

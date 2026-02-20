@@ -6,6 +6,8 @@
 Welcome to uncle_val's documentation!
 ========================================================================================
 
+Uncertainty validation for large time-domain datasets
+
 Dev Guide - Getting Started
 ---------------------------
 

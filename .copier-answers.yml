@@ -1,10 +1,10 @@
 # Changes here will be overwritten by Copier
-_commit: v2.1.0
+_commit: v2.2.0
 _src_path: gh:lincc-frameworks/python-project-template
 author_email: malanchev@cmu.edu
 author_name: Konstantin Malanchev
 create_example_module: false
-custom_install: true
+custom_install: custom
 enforce_style:
 - ruff_lint
 - ruff_format
@@ -14,6 +14,7 @@ include_docs: true
 include_notebooks: true
 mypy_type_checking: none
 package_name: uncle_val
+project_description: Uncertainty validation for large time-domain datasets
 project_license: MIT
 project_name: uncle-val
 project_organization: lincc-frameworks
@@ -21,4 +22,5 @@ python_versions:
 - '3.11'
 - '3.12'
 - '3.13'
+- '3.14'
 test_lowest_version: none

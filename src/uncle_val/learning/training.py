@@ -4,13 +4,13 @@ from torch import Tensor
 from torch.optim import Optimizer
 
 from uncle_val.learning.losses import UncleLoss
-from uncle_val.learning.models import UncleModel
+from uncle_val.learning.models import BaseUncleModel
 
 
 def train_step(
     *,
     optimizer: Optimizer,
-    model: UncleModel,
+    model: BaseUncleModel,
     loss: UncleLoss,
     batch: Tensor,
 ) -> Tensor:
@@ -20,7 +20,7 @@ def train_step(
     ----------
     optimizer : torch.optim.Optimizer
         Optimizer to use for training
-    model : UncleModel
+    model : BaseUncleModel
         Model to train, input vector size is d_input.
     loss : callable, udf(flux, err) -> loss_value
         Loss function to call on corrected fluxes and errors.
@@ -50,7 +50,7 @@ def train_step(
 
 def evaluate_loss(
     *,
-    model: UncleModel,
+    model: BaseUncleModel,
     loss: Callable[[Tensor, Tensor, Tensor], object],
     batch: Tensor,
 ) -> object:
@@ -60,7 +60,7 @@ def evaluate_loss(
 
     Parameters
     ----------
-    model : UncleModel
+    model : BaseUncleModel
         Model to evaluate.
     loss : callable
         func(flux, err, model_output) -> loss_value

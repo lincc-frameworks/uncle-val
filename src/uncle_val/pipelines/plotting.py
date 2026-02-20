@@ -13,7 +13,7 @@ from nested_pandas import NestedDtype, NestedFrame
 from scipy.stats import norm
 
 from uncle_val.datasets.dp1 import dp1_catalog_multi_band
-from uncle_val.learning.models import UncleModel
+from uncle_val.learning.models import BaseUncleModel
 from uncle_val.utils.hashing import uniform_hash
 from uncle_val.whitening import whiten_data
 
@@ -309,7 +309,7 @@ def make_plots(
     min_n_src: int,
     non_extended_only: bool,
     n_workers: int,
-    model_path: str | Path | UncleModel | None,
+    model_path: str | Path | BaseUncleModel | None,
     model_columns: Sequence[str] = ("lc.x", "lc.err"),
     n_samples: int,
     device: torch.device | str = "cpu",

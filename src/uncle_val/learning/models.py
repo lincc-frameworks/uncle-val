@@ -79,7 +79,63 @@ class UncleScaler:
         return normalizers
 
 
-class UncleModel(torch.nn.Module):
+class BaseUncleModel(torch.nn.Module):
+    """Abstract base class for u-function learning
+
+    Provides common initialization and utilities. Subclasses must implement
+    ``forward()``.
+
+    Parameters
+    ----------
+    input_names : list of str
+        Names of input dimensions, used for defining normalizers and for the
+        dimensionality of the first model layer.
+    outputs_s : bool
+        False would make the model to return `u` only, True would return both
+        `u` and `s`.
+    """
+
+    def __init__(self, *, input_names: Sequence[str], outputs_s: bool) -> None:
+        super().__init__()
+
+        self.input_names = list(input_names)
+        self.d_input = len(self.input_names)
+        self.scaler = UncleScaler()
+        self.normalizers = self.scaler.normalizers(self.input_names)
+
+        self.outputs_s = outputs_s
+        self.d_output = 1 + int(self.outputs_s)
+
+    def norm_inputs(self, inputs: torch.Tensor) -> torch.Tensor:
+        """Normalizes batch"""
+        normed = inputs.clone()
+        for idx, f in self.normalizers.items():
+            normed[..., idx] = f(inputs[..., idx])
+        return normed
+
+    def save_onnx(self, path: Path | str) -> None:
+        """Save the model to an ONNX file.
+
+        Parameters
+        ----------
+        path : str or Path
+            Path to save model.
+        """
+        if isinstance(path, str):
+            path = Path(path)
+
+        torch.onnx.export(
+            self,
+            torch.ones(self.d_input),
+            path,
+            input_names=["input"],
+            output_names=["output"],
+            dynamic_shapes={"x": {0: torch.export.Dim("batch_size", min=1)}},
+            dynamo=True,
+        )
+
+
+class UncleModel(BaseUncleModel):
     """Base class for u-function learning
 
     You must re-implement __init__() to call super().__init__()
@@ -107,24 +163,6 @@ class UncleModel(torch.nn.Module):
 
     module: torch.nn.Module
 
-    def __init__(self, *, input_names: Sequence[str], outputs_s: bool) -> None:
-        super().__init__()
-
-        self.input_names = list(input_names)
-        self.d_input = len(self.input_names)
-        self.scaler = UncleScaler()
-        self.normalizers = self.scaler.normalizers(self.input_names)
-
-        self.outputs_s = outputs_s
-        self.d_output = 1 + int(self.outputs_s)
-
-    def norm_inputs(self, inputs: torch.Tensor) -> torch.Tensor:
-        """Normalizes batch"""
-        normed = inputs.clone()
-        for idx, f in self.normalizers.items():
-            normed[..., idx] = f(inputs[..., idx])
-        return normed
-
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         """Compute the output of the model"""
         output = self.module(self.norm_inputs(inputs))
@@ -132,27 +170,6 @@ class UncleModel(torch.nn.Module):
         output[..., 0] = torch.exp(-output[..., 0])
         # We don't scale s, so nothing to do here
         return output
-
-    def save_onnx(self, path: Path | str) -> None:
-        """Save the model to an ONNX file.
-
-        Parameters
-        ----------
-        path : str or Path
-            Path to save model.
-        """
-        if isinstance(path, str):
-            path = Path(path)
-
-        torch.onnx.export(
-            self,
-            torch.ones(self.d_input),
-            path,
-            input_names=["input"],
-            output_names=["output"],
-            dynamic_shapes={"x": {0: torch.export.Dim("batch_size", min=1)}},
-            dynamo=True,
-        )
 
 
 class MLPModel(UncleModel):
@@ -239,13 +256,32 @@ class ConstantModel(UncleModel):
         return self.vector.repeat(shape + (self.d_output,))
 
 
-class ConstantMagErrModel(UncleModel):
-    """Uncle function returns constant"""
+class MagErrModel(BaseUncleModel):
+    """Base class for magnitude-error physics models
+
+    Subclasses must assign ``self.module`` to a ``torch.nn.Module`` whose
+    ``forward()`` returns the systematic magnitude error in centi-magnitudes
+    (i.e. the value is multiplied by ``1e-2`` to get magnitudes).
+
+    The corrected flux error is computed by adding the systematic magnitude
+    error in quadrature to the photon-noise magnitude error:
+
+        new_mag_err = hypot(mag_err, systematic_mag_err)
+        u = magerr2fluxerr(new_mag_err) / flux_err
+
+    Parameters
+    ----------
+    input_names : list of str
+        Names of input dimensions. Must include a flux column (``'flux'`` or
+        ``'x'``) and an error column (``'err'``).
+    """
 
     flux_floor = mag2flux(30.0)
     ln10_0_4 = 0.4 * math.log(10.0)
 
-    def __init__(self, input_names: Sequence[str]) -> None:
+    module: torch.nn.Module
+
+    def __init__(self, *, input_names: Sequence[str]) -> None:
         super().__init__(input_names=input_names, outputs_s=False)
 
         if "flux" in input_names:
@@ -260,19 +296,6 @@ class ConstantMagErrModel(UncleModel):
         else:
             raise ValueError("input_names must include 'err'")
 
-        self.addition_centi_mag_err = torch.nn.Parameter(torch.ones(1))
-
-        self.normalizers = None
-
-    def norm_inputs(self, inputs: torch.Tensor) -> torch.Tensor:
-        """Normalizes batch, here we do nothing because we don't use inputs"""
-        return inputs
-
-    def module(self, inputs: torch.Tensor) -> torch.Tensor:
-        """Returns extra magnitude error multiplied by 100"""
-        shape = inputs.shape[:-1]
-        return self.vector.repeat(shape + (self.d_output,))
-
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         """Compute the output of the model"""
         systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs))
@@ -286,3 +309,22 @@ class ConstantMagErrModel(UncleModel):
         new_flux_err = magerr2fluxerr(flux=flux, mag_err=new_mag_err)
         u = new_flux_err / flux_err
         return u[..., None]
+
+
+class ConstantMagErrModel(MagErrModel):
+    """Uncle function adds a constant systematic magnitude error in quadrature
+
+    Parameters
+    ----------
+    input_names : list of str
+        Names of input dimensions. Must include a flux column (``'flux'`` or
+        ``'x'``) and an error column (``'err'``).
+    """
+
+    def __init__(self, input_names: Sequence[str]) -> None:
+        super().__init__(input_names=input_names)
+        self.addition_centi_mag_err = torch.nn.Parameter(torch.ones(1))
+
+    def module(self, inputs: torch.Tensor) -> torch.Tensor:
+        """Trainable systematic magnitude error addition in centi-magnitudes."""
+        return self.addition_centi_mag_err

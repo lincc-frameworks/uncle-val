@@ -13,12 +13,18 @@ from uncle_val.learning.losses import (
     minus_ln_chi2_prob_loss,
 )
 from uncle_val.learning.lsdb_dataset import LSDBIterableDataset
-from uncle_val.learning.models import ConstantModel, LinearModel, MLPModel, UncleModel
+from uncle_val.learning.models import (
+    BaseUncleModel,
+    ConstantMagErrModel,
+    ConstantModel,
+    LinearModel,
+    MLPModel,
+)
 from uncle_val.learning.training import train_step
 
 
 def run_model(
-    *, batch_size: int, train_batches: int, n_obj: int, model: UncleModel, loss: UncleLoss, rtol: float
+    *, batch_size: int, train_batches: int, n_obj: int, model: BaseUncleModel, loss: UncleLoss, rtol: float
 ):
     """Run tests with MLP model
 
@@ -30,7 +36,7 @@ def run_model(
         Number of training steps, e.g. number of batches to train on.
     n_obj : int
         Number of unique objects to generate.
-    model : UncleModel
+    model : BaseUncleModel
         Model to use
     loss : Callable
         Loss function to use
@@ -168,3 +174,60 @@ def test_constant_model_many_objects(loss_prod):
     )
     loss = loss_prod(lmbd=None, soft=None, kind="accum")
     run_model(model=model, loss=loss, batch_size=2, train_batches=10_000, n_obj=1000, rtol=0.1)
+
+
+@pytest.mark.parametrize(
+    "loss_prod", [minus_ln_chi2_prob_loss, kl_divergence_whiten_loss, epps_pulley_whiten_loss]
+)
+@pytest.mark.long
+def test_constant_magerr_model_many_objects(loss_prod):
+    """Fit ConstantMagErrModel to recover a 2 centimag (0.02 mag) systematic error"""
+    torch.manual_seed(42)
+    np.random.seed(42)
+    random.seed(42)
+    torch.use_deterministic_algorithms(True)
+
+    rng = np.random.default_rng(42)
+
+    n_obj = 1000
+    n_src_training = 30
+    target_centi_mag_err = 2.0  # 2 centimag = 0.02 mag
+
+    n_src = rng.integers(n_src_training, 150, size=n_obj)
+
+    def u_func(flux, flux_err):
+        mag_err = 2.5 / np.log(10) * flux_err / flux
+        new_mag_err = np.hypot(mag_err, 0.02)
+        new_flux_err = np.log(10) / 2.5 * flux * new_mag_err
+        return new_flux_err / flux_err
+
+    catalog = fake_non_variable_lcs(
+        n_obj=n_obj,
+        n_src=n_src,
+        err=None,
+        u=u_func,
+        rng=rng,
+    )
+
+    train_dataset = LSDBIterableDataset(
+        catalog=catalog,
+        client=None,
+        columns=["x", "err"],
+        batch_lc=2,
+        n_src=n_src_training,
+        partitions_per_chunk=12,
+        hash_range=(0.0, 0.5),
+        loop=True,
+        seed=rng.integers(1 << 63),
+    )
+
+    model = ConstantMagErrModel(input_names=["x", "err"])
+    model.train()
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    loss = loss_prod(lmbd=None, soft=None, kind="accum")
+
+    for _i_step, batch in zip(range(10_000), train_dataset, strict=False):
+        train_step(model=model, optimizer=optimizer, loss=loss, batch=batch)
+
+    model.eval()
+    assert_allclose(model.addition_centi_mag_err.item(), target_centi_mag_err, rtol=0.1)

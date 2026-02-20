@@ -14,7 +14,7 @@ from tqdm.auto import tqdm
 
 from uncle_val.learning.losses import UncleLoss
 from uncle_val.learning.lsdb_dataset import LSDBIterableDataset
-from uncle_val.learning.models import UncleModel
+from uncle_val.learning.models import BaseUncleModel
 from uncle_val.learning.training import train_step
 from uncle_val.pipelines.splits import TRAIN_SPLIT, VALIDATION_SPLIT
 from uncle_val.pipelines.utils import _launch_tfboard
@@ -47,7 +47,7 @@ def training_loop(
     *,
     catalog: lsdb.Catalog,
     columns: list[str] | None,
-    model: UncleModel,
+    model: BaseUncleModel,
     n_workers: int,
     n_src: int,
     n_lcs: int,
@@ -71,7 +71,7 @@ def training_loop(
         Catalog to train on.
     columns : list[str]
         Columns to train on.
-    model : UncleModel
+    model : BaseUncleModel
         Model to train.
     n_workers : int
         Number of Dask workers to use.

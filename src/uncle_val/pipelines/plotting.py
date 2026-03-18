@@ -302,6 +302,55 @@ def _plot_magn_vs_uu(
     ax.legend()
 
 
+def plot_feature_importance(
+    importances: dict[str, np.ndarray],
+    *,
+    output_path: str | Path | None = None,
+    title: str = "Permutation Feature Importance",
+) -> plt.Figure:
+    """Plot permutation feature importance as a horizontal bar chart.
+
+    Parameters
+    ----------
+    importances : dict[str, np.ndarray]
+        Maps each feature name to an array of shape ``(n_repeats,)`` with
+        importance values, as returned by
+        :func:`~uncle_val.pipelines.validation_set_utils.compute_permutation_importance`.
+    output_path : str, Path, or None
+        If given, save the figure to this path.
+    title : str
+        Figure title.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The created figure.
+    """
+    names = list(importances.keys())
+    means = np.array([importances[n].mean() for n in names])
+    stds = np.array([importances[n].std() for n in names])
+
+    order = np.argsort(means)
+    names = [names[i] for i in order]
+    means = means[order]
+    stds = stds[order]
+
+    fig, ax = plt.subplots(figsize=(8, max(3, 0.4 * len(names))))
+    y = np.arange(len(names))
+    ax.barh(y, means, xerr=stds, align="center", alpha=0.7)
+    ax.set_yticks(y)
+    ax.set_yticklabels(names)
+    ax.set_xlabel("Mean absolute change in u")
+    ax.set_title(title)
+    ax.axvline(0, color="black", linestyle="--", alpha=0.3)
+    plt.tight_layout()
+
+    if output_path is not None:
+        fig.savefig(output_path)
+
+    return fig
+
+
 def make_plots(
     dp1_root: str | Path,
     *,

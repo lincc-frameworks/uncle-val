@@ -16,9 +16,14 @@ from uncle_val.learning.losses import UncleLoss
 from uncle_val.learning.lsdb_dataset import LSDBIterableDataset
 from uncle_val.learning.models import BaseUncleModel
 from uncle_val.learning.training import train_step
+from uncle_val.pipelines.plotting import plot_feature_importance
 from uncle_val.pipelines.splits import TRAIN_SPLIT, VALIDATION_SPLIT
 from uncle_val.pipelines.utils import _launch_tfboard
-from uncle_val.pipelines.validation_set_utils import ValidationDataLoaderContext, get_val_stats
+from uncle_val.pipelines.validation_set_utils import (
+    ValidationDataLoaderContext,
+    compute_permutation_importance,
+    get_val_stats,
+)
 
 
 def get_val_workers(client: Client, device: torch.device) -> list[object] | None:
@@ -262,6 +267,18 @@ def training_loop(
             # Call twice to record the final validation loss
             snapshot(i_train_batch)
             snapshot(i_train_batch)
+
+            if best_model_path is not None and model.input_names:
+                importances = compute_permutation_importance(
+                    model_path=best_model_path,
+                    data_loader=val_dataloader,
+                    device=device,
+                )
+                fig = plot_feature_importance(
+                    importances,
+                    output_path=output_dir / "feature_importance.png",
+                )
+                summary_writer.add_figure("Feature importance", fig)
 
     model.eval()
     summary_writer.add_graph(model, train_batch[0])

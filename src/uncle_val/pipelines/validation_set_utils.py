@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from captum.attr import FeaturePermutation
 from torch.utils.data import DataLoader, Dataset
 
 from uncle_val.learning.losses import UncleLoss
@@ -107,6 +108,78 @@ class ActivationHistHook:
         del module, input
         torch_counts, _torch_bins = torch.histogram(output, self.bins)
         self.counts += torch_counts.detach().cpu().numpy()
+
+
+def compute_permutation_importance(
+    *,
+    model_path: str | Path,
+    data_loader: DataLoader,
+    device: torch.device,
+    n_repeats: int = 5,
+    rng_seed: int = 0,
+) -> dict[str, np.ndarray]:
+    """Compute permutation feature importance on the validation set via Captum.
+
+    For each input feature, uses :class:`captum.attr.FeaturePermutation` to
+    permute that feature's values across all observations and measure the mean
+    absolute change in the predicted uncertainty factor ``u``.  A larger value
+    means the model relies more heavily on that feature.
+
+    Parameters
+    ----------
+    model_path : str or Path
+        Path to the saved model checkpoint.
+    data_loader : DataLoader
+        Validation data loader (yields batches of shape
+        ``(1, batch_lc, n_src, n_features)``).
+    device : torch.device
+        Device for model and data.
+    n_repeats : int
+        Number of independent permutation repeats per feature, used to
+        estimate variance.
+    rng_seed : int
+        Seed passed to :func:`torch.manual_seed` for reproducibility.
+
+    Returns
+    -------
+    dict[str, np.ndarray]
+        Maps each feature name to an array of shape ``(n_repeats,)`` with the
+        mean absolute change in ``u`` across observations due to permuting that
+        feature.
+    """
+    torch.manual_seed(rng_seed)
+    model = torch.load(model_path, weights_only=False, map_location=device)
+    model.eval()
+    input_names = model.input_names
+
+    # Accumulate per-repeat importances across all batches: list of (n_repeats, n_features)
+    batch_importances: list[np.ndarray] = []
+
+    for batch in data_loader:
+        # DataLoader wraps each saved chunk with an extra dim → (1, batch_lc, n_src, n_features)
+        data = batch.squeeze(0)  # (batch_lc, n_src, n_features)
+        batch_lc, n_src, n_features = data.shape
+        flat = data.reshape(-1, n_features)  # (batch_lc * n_src, n_features)
+
+        def forward_func(flat_inputs, _bl=batch_lc, _ns=n_src, _nf=n_features):
+            b = flat_inputs.reshape(_bl, _ns, _nf)
+            with torch.no_grad():
+                output = model(b)  # (batch_lc, n_src, d_output)
+            return output[..., 0].reshape(-1)  # u per observation: (batch_lc * n_src,)
+
+        fp = FeaturePermutation(forward_func)
+
+        repeat_attrs = []
+        for _ in range(n_repeats):
+            attrs = fp.attribute(flat)  # (batch_lc * n_src, n_features)
+            repeat_attrs.append(attrs.abs().mean(dim=0).cpu().detach().numpy())
+
+        batch_importances.append(np.stack(repeat_attrs, axis=0))  # (n_repeats, n_features)
+
+    # Average over batches → (n_repeats, n_features)
+    mean_importances = np.mean(batch_importances, axis=0)
+
+    return {name: mean_importances[:, i] for i, name in enumerate(input_names)}
 
 
 def get_val_stats(

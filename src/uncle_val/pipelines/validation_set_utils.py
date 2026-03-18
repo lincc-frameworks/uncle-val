@@ -4,7 +4,6 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from captum.attr import FeaturePermutation
 from torch.utils.data import DataLoader, Dataset
 
 from uncle_val.learning.losses import UncleLoss
@@ -110,20 +109,37 @@ class ActivationHistHook:
         self.counts += torch_counts.detach().cpu().numpy()
 
 
-def compute_permutation_importance(
+class _FlatWrapper(torch.nn.Module):
+    """Wraps an UncleModel to accept flat ``(N, n_features)`` input.
+
+    Treats N observations as a single light curve ``(1, N, n_features)``
+    so that each observation is processed independently, and returns the
+    per-observation uncertainty factor ``u`` as a 1-D tensor ``(N,)``.
+    """
+
+    def __init__(self, model: torch.nn.Module) -> None:
+        super().__init__()
+        self.model = model
+
+    def forward(self, flat_inputs: torch.Tensor) -> torch.Tensor:
+        """Forward pass returning u per observation."""
+        output = self.model(flat_inputs.unsqueeze(0))  # (1, N, d_output)
+        return output[0, :, :1]  # (N, 1) — shap requires 2D output
+
+
+def compute_shap_values(
     *,
     model_path: str | Path,
     data_loader: DataLoader,
     device: torch.device,
-    n_repeats: int = 5,
-    rng_seed: int = 0,
-) -> dict[str, np.ndarray]:
-    """Compute permutation feature importance on the validation set via Captum.
+    n_background: int = 100,
+    n_test: int = 500,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute SHAP values for the predicted uncertainty factor ``u``.
 
-    For each input feature, uses :class:`captum.attr.FeaturePermutation` to
-    permute that feature's values across all observations and measure the mean
-    absolute change in the predicted uncertainty factor ``u``.  A larger value
-    means the model relies more heavily on that feature.
+    Uses :class:`shap.GradientExplainer` with a flat ``(N, n_features)``
+    wrapper around the model.  Background and test observations are drawn
+    from the first batches of *data_loader*.
 
     Parameters
     ----------
@@ -134,52 +150,45 @@ def compute_permutation_importance(
         ``(1, batch_lc, n_src, n_features)``).
     device : torch.device
         Device for model and data.
-    n_repeats : int
-        Number of independent permutation repeats per feature, used to
-        estimate variance.
-    rng_seed : int
-        Seed passed to :func:`torch.manual_seed` for reproducibility.
+    n_background : int
+        Number of background observations for the SHAP baseline.
+    n_test : int
+        Number of observations to explain.
 
     Returns
     -------
-    dict[str, np.ndarray]
-        Maps each feature name to an array of shape ``(n_repeats,)`` with the
-        mean absolute change in ``u`` across observations due to permuting that
-        feature.
+    shap_values : np.ndarray, shape ``(n_test, n_features)``
+        SHAP values for each observation and feature.
+    feature_data : np.ndarray, shape ``(n_test, n_features)``
+        Raw feature values corresponding to *shap_values*, used for
+        colouring the beeswarm plot.
     """
-    torch.manual_seed(rng_seed)
+    import shap
+
     model = torch.load(model_path, weights_only=False, map_location=device)
     model.eval()
-    input_names = model.input_names
 
-    # Accumulate per-repeat importances across all batches: list of (n_repeats, n_features)
-    batch_importances: list[np.ndarray] = []
-
+    # Collect flat observations from validation batches
+    obs: list[torch.Tensor] = []
+    n_needed = n_background + n_test
     for batch in data_loader:
-        # DataLoader wraps each saved chunk with an extra dim → (1, batch_lc, n_src, n_features)
-        data = batch.squeeze(0)  # (batch_lc, n_src, n_features)
-        batch_lc, n_src, n_features = data.shape
-        flat = data.reshape(-1, n_features)  # (batch_lc * n_src, n_features)
+        flat = batch.squeeze(0).reshape(-1, batch.shape[-1])  # (batch_lc*n_src, n_features)
+        obs.append(flat)
+        if sum(t.shape[0] for t in obs) >= n_needed:
+            break
+    all_obs = torch.cat(obs, dim=0)[:n_needed]
 
-        def forward_func(flat_inputs, _bl=batch_lc, _ns=n_src, _nf=n_features):
-            b = flat_inputs.reshape(_bl, _ns, _nf)
-            with torch.no_grad():
-                output = model(b)  # (batch_lc, n_src, d_output)
-            return output[..., 0].reshape(-1)  # u per observation: (batch_lc * n_src,)
+    background = all_obs[:n_background]
+    test_data = all_obs[n_background:n_needed]
 
-        fp = FeaturePermutation(forward_func)
+    wrapped = _FlatWrapper(model)
+    explainer = shap.GradientExplainer(wrapped, background)
+    shap_values = np.array(explainer.shap_values(test_data))
+    # GradientExplainer returns (n_test, n_features, n_outputs); drop the output dim
+    if shap_values.ndim == 3:
+        shap_values = shap_values[..., 0]
 
-        repeat_attrs = []
-        for _ in range(n_repeats):
-            attrs = fp.attribute(flat)  # (batch_lc * n_src, n_features)
-            repeat_attrs.append(attrs.abs().mean(dim=0).cpu().detach().numpy())
-
-        batch_importances.append(np.stack(repeat_attrs, axis=0))  # (n_repeats, n_features)
-
-    # Average over batches → (n_repeats, n_features)
-    mean_importances = np.mean(batch_importances, axis=0)
-
-    return {name: mean_importances[:, i] for i, name in enumerate(input_names)}
+    return shap_values, test_data.cpu().detach().numpy()
 
 
 def get_val_stats(

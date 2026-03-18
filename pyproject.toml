@@ -31,7 +31,7 @@ dependencies = [
     "setuptools<70",  # provides pkg_resources, required by tensorboard but missing from its dependencies
     "tensorboard>=2",
     "torch>=2.8.0,<3",
-    "captum>=0.7",
+    "shap",
     "tqdm>=4",
 ]
 

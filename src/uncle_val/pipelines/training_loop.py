@@ -16,12 +16,12 @@ from uncle_val.learning.losses import UncleLoss
 from uncle_val.learning.lsdb_dataset import LSDBIterableDataset
 from uncle_val.learning.models import BaseUncleModel
 from uncle_val.learning.training import train_step
-from uncle_val.pipelines.plotting import plot_feature_importance
+from uncle_val.pipelines.plotting import plot_shap_summary
 from uncle_val.pipelines.splits import TRAIN_SPLIT, VALIDATION_SPLIT
 from uncle_val.pipelines.utils import _launch_tfboard
 from uncle_val.pipelines.validation_set_utils import (
     ValidationDataLoaderContext,
-    compute_permutation_importance,
+    compute_shap_values,
     get_val_stats,
 )
 
@@ -269,13 +269,15 @@ def training_loop(
             snapshot(i_train_batch)
 
             if best_model_path is not None and model.input_names:
-                importances = compute_permutation_importance(
+                shap_values, feature_data = compute_shap_values(
                     model_path=best_model_path,
                     data_loader=val_dataloader,
                     device=device,
                 )
-                fig = plot_feature_importance(
-                    importances,
+                fig = plot_shap_summary(
+                    shap_values,
+                    feature_data,
+                    input_names=model.input_names,
                     output_path=output_dir / "feature_importance.png",
                 )
                 summary_writer.add_figure("Feature importance", fig)

@@ -302,20 +302,28 @@ def _plot_magn_vs_uu(
     ax.legend()
 
 
-def plot_feature_importance(
-    importances: dict[str, np.ndarray],
+def plot_shap_summary(
+    shap_values: np.ndarray,
+    feature_data: np.ndarray,
+    input_names: list[str],
     *,
     output_path: str | Path | None = None,
-    title: str = "Permutation Feature Importance",
+    title: str = "SHAP Feature Importance",
 ) -> plt.Figure:
-    """Plot permutation feature importance as a horizontal bar chart.
+    """Plot a SHAP beeswarm summary for the predicted uncertainty factor ``u``.
+
+    Each dot represents one observation, positioned by its SHAP value (impact
+    on ``u``) and coloured by the raw feature value (red = high, blue = low).
 
     Parameters
     ----------
-    importances : dict[str, np.ndarray]
-        Maps each feature name to an array of shape ``(n_repeats,)`` with
-        importance values, as returned by
-        :func:`~uncle_val.pipelines.validation_set_utils.compute_permutation_importance`.
+    shap_values : np.ndarray, shape ``(n_samples, n_features)``
+        SHAP values as returned by
+        :func:`~uncle_val.pipelines.validation_set_utils.compute_shap_values`.
+    feature_data : np.ndarray, shape ``(n_samples, n_features)``
+        Raw feature values corresponding to *shap_values*.
+    input_names : list of str
+        Feature names in the order of the last dimension.
     output_path : str, Path, or None
         If given, save the figure to this path.
     title : str
@@ -326,27 +334,20 @@ def plot_feature_importance(
     matplotlib.figure.Figure
         The created figure.
     """
-    names = list(importances.keys())
-    means = np.array([importances[n].mean() for n in names])
-    stds = np.array([importances[n].std() for n in names])
+    import shap
 
-    order = np.argsort(means)
-    names = [names[i] for i in order]
-    means = means[order]
-    stds = stds[order]
-
-    fig, ax = plt.subplots(figsize=(8, max(3, 0.4 * len(names))))
-    y = np.arange(len(names))
-    ax.barh(y, means, xerr=stds, align="center", alpha=0.7)
-    ax.set_yticks(y)
-    ax.set_yticklabels(names)
-    ax.set_xlabel("Mean absolute change in u")
-    ax.set_title(title)
-    ax.axvline(0, color="black", linestyle="--", alpha=0.3)
-    plt.tight_layout()
+    plt.close("all")
+    explanation = shap.Explanation(
+        values=shap_values,
+        data=feature_data,
+        feature_names=input_names,
+    )
+    shap.plots.beeswarm(explanation, show=False, max_display=len(input_names))
+    fig = plt.gcf()
+    fig.suptitle(title, y=1.01)
 
     if output_path is not None:
-        fig.savefig(output_path)
+        fig.savefig(output_path, bbox_inches="tight")
 
     return fig
 

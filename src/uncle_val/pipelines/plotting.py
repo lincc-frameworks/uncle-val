@@ -302,56 +302,6 @@ def _plot_magn_vs_uu(
     ax.legend()
 
 
-def plot_shap_summary(
-    shap_values: np.ndarray,
-    feature_data: np.ndarray,
-    input_names: list[str],
-    *,
-    output_path: str | Path | None = None,
-    title: str = "SHAP Feature Importance",
-) -> plt.Figure:
-    """Plot a SHAP beeswarm summary for the predicted uncertainty factor ``u``.
-
-    Each dot represents one observation, positioned by its SHAP value (impact
-    on ``u``) and coloured by the raw feature value (red = high, blue = low).
-
-    Parameters
-    ----------
-    shap_values : np.ndarray, shape ``(n_samples, n_features)``
-        SHAP values as returned by
-        :func:`~uncle_val.pipelines.validation_set_utils.compute_shap_values`.
-    feature_data : np.ndarray, shape ``(n_samples, n_features)``
-        Raw feature values corresponding to *shap_values*.
-    input_names : list of str
-        Feature names in the order of the last dimension.
-    output_path : str, Path, or None
-        If given, save the figure to this path.
-    title : str
-        Figure title.
-
-    Returns
-    -------
-    matplotlib.figure.Figure
-        The created figure.
-    """
-    import shap
-
-    plt.close("all")
-    explanation = shap.Explanation(
-        values=shap_values,
-        data=feature_data,
-        feature_names=input_names,
-    )
-    shap.plots.beeswarm(explanation, show=False, max_display=len(input_names))
-    fig = plt.gcf()
-    fig.suptitle(title, y=1.01)
-
-    if output_path is not None:
-        fig.savefig(output_path, bbox_inches="tight")
-
-    return fig
-
-
 def make_plots(
     dp1_root: str | Path,
     *,

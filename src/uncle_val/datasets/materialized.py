@@ -45,9 +45,10 @@ class MaterializedDataLoaderContext:
         It will be deleted on the context exit.
     """
 
-    def __init__(self, input_dataset: LSDBIterableDataset, tmp_dir: Path | str):
+    def __init__(self, input_dataset: LSDBIterableDataset, tmp_dir: Path | str, cleanup: bool):
         self.input_dataset = input_dataset
         self.tmp_dir = Path(tmp_dir)
+        self.cleanup = cleanup
 
     def _serialize_data(self):
         n_chunks = 0
@@ -74,4 +75,5 @@ class MaterializedDataLoaderContext:
         )
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        shutil.rmtree(self.tmp_dir)
+        if self.cleanup:
+            shutil.rmtree(self.tmp_dir)

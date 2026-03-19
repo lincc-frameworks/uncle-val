@@ -129,7 +129,10 @@ def training_loop(
     model = model.to(device)
 
     with Client(n_workers=n_workers, memory_limit="8GB", threads_per_worker=1) as client:
-        print(f"Dask Dashboard Link: {client.dashboard_link}")
+        try:
+            print(f"Dask Dashboard Link: {client.dashboard_link}")
+        except KeyError as e:
+            print(f"Cannot get Dask Dashboard Link: {e}")
 
         validation_dataset_lsdb = LSDBIterableDataset(
             catalog=catalog,
@@ -144,7 +147,9 @@ def training_loop(
             device=device,
         )
 
-        with MaterializedDataLoaderContext(validation_dataset_lsdb, tmp_validation_dir) as val_dataloader:
+        with MaterializedDataLoaderContext(
+            validation_dataset_lsdb, tmp_validation_dir, cleanup=False
+        ) as val_dataloader:
             val_stats_future: Future | None = None
             mean_val_loss_i = 0
 

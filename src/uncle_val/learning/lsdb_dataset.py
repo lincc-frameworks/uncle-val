@@ -22,17 +22,23 @@ def _reduce_all_columns_wrapper(*args, columns=None, udf, **kwargs):
 
 
 def _process_lc(
-    row: dict[str, object], *, n_src: int, lc_col: str, length_col: str, rng: np.random.Generator
+    row: dict[str, object],
+    *,
+    n_src: int,
+    subsample_src: bool,
+    lc_col: str,
+    length_col: str,
+    rng: np.random.Generator,
 ) -> dict[str, np.ndarray]:
     lc_length = row.pop(length_col)
-    idx = rng.choice(lc_length, size=n_src, replace=False)
+    idx = rng.choice(lc_length, size=n_src, replace=False) if subsample_src else np.arange(lc_length)
 
     result: dict[str, np.ndarray] = {}
     for col, value in row.items():
         if col.startswith(f"{lc_col}."):
             result[col] = value[idx]
         else:
-            result[f"{lc_col}.{col}"] = np.full(n_src, value)
+            result[f"{lc_col}.{col}"] = np.full(len(idx), value)
     return result
 
 
@@ -41,6 +47,7 @@ def _process_partition(
     pixel: HealpixPixel,
     *,
     n_src: int,
+    subsample_src: bool,
     lc_col: str,
     id_col: str,
     hash_range: tuple[int, int] | None,
@@ -77,6 +84,7 @@ def _process_partition(
         columns=columns,
         udf=_process_lc,
         n_src=n_src,
+        subsample_src=subsample_src,
         lc_col=lc_col,
         length_col=length_col,
         rng=rng,
@@ -92,6 +100,7 @@ def lsdb_nested_series_data_generator(
     id_col: str = "id",
     client: dask.distributed.Client | None,
     n_src: int,
+    subsample_src: bool = True,
     partitions_per_chunk: int | None,
     hash_range: tuple[int, int] | None = None,
     loop: bool = False,
@@ -101,8 +110,10 @@ def lsdb_nested_series_data_generator(
 
     The data is pre-fetched on the background, 'n_workers' number
     of partitions per time (derived from `client` object).
-    It filters out light curves with less than `n_src` observations,
-    and selects `n_src` random observations per light curve.
+    Filters out light curves with fewer than `n_src` observations.
+    If `subsample_src` is ``True``, selects exactly `n_src` random observations
+    per light curve. If ``False``, all observations from qualifying light curves
+    are included.
 
     Parameters
     ----------
@@ -118,7 +129,12 @@ def lsdb_nested_series_data_generator(
         value. If Dask client is given, the data would be fetched on the
         background.
     n_src : int
-        Number of random observations per light curve.
+        Minimum number of observations required per light curve. Also the
+        subsample target when `subsample_src` is ``True``.
+    subsample_src : bool, optional
+        If ``True`` (default), randomly subsample exactly `n_src` observations
+        per light curve. If ``False``, include all observations from qualifying
+        light curves.
     partitions_per_chunk : int
         Number of `catalog` partitions load in memory simultaneously.
         This changes the randomness.
@@ -151,6 +167,7 @@ def lsdb_nested_series_data_generator(
             _process_partition,
             include_pixel=True,
             n_src=n_src,
+            subsample_src=subsample_src,
             lc_col=lc_col,
             id_col=id_col,
             hash_range=hash_range,
@@ -205,7 +222,8 @@ class LSDBIterableDataset(IterableDataset):
         Number of batches to yield. If `splits` is used, it will be the size
         of the first subset.
     n_src : int
-        Number of random observations per light curve.
+        Number of random observations per light curve. Light curves with fewer
+        than `n_src` observations are filtered out.
     partitions_per_chunk : int or None
         Number of `catalog` partitions per time, if None it is derived
         from the number of dask workers associated with `Client` (one if

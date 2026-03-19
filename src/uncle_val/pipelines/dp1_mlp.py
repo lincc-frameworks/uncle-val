@@ -1,6 +1,8 @@
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import torch
+from nested_pandas import NestedFrame
 
 from uncle_val.datasets.dp1 import dp1_catalog_multi_band
 from uncle_val.learning.losses import UncleLoss
@@ -26,6 +28,8 @@ def run_dp1_mlp(
     log_activations: bool = False,
     snapshot_every: int = 128,
     device: torch.device | str = "cpu",
+    bands: Sequence[str] = "ugrizy",
+    pre_filter_partition: Callable[[NestedFrame], NestedFrame] | None = None,
 ) -> tuple[Path, list[str]]:
     """Run the training for DP1 with the linear model on fluxes and errors
 
@@ -68,6 +72,12 @@ def run_dp1_mlp(
         Whether to log validation activations with TensorBoard session.
     device : torch.device | str
         Torch device to use for training.
+    bands : sequence of str
+        Bands to include, subset of ``ugrizy``. Defaults to all six bands.
+    pre_filter_partition : callable or None
+        Optional function applied to each catalog partition before any other
+        processing. Receives a ``NestedFrame`` and returns a filtered
+        ``NestedFrame``.
 
     Returns
     -------
@@ -76,8 +86,6 @@ def run_dp1_mlp(
     list[str]
         List of columns to use as model inputs.
     """
-    bands = "ugrizy"
-
     catalog = dp1_catalog_multi_band(
         root=dp1_root,
         bands=bands,
@@ -85,6 +93,7 @@ def run_dp1_mlp(
         img="cal",
         phot="PSF",
         mode="forced",
+        pre_filter_partition=pre_filter_partition,
     ).map_partitions(lambda df: df.drop(columns=["band", "object_mag", "coord_ra", "coord_dec"]))
 
     columns = [

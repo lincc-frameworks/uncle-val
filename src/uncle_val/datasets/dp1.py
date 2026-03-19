@@ -6,6 +6,7 @@ import lsdb
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+from nested_pandas import NestedFrame
 from upath import UPath
 
 from uncle_val.variability_detectors import get_combined_variability_detector
@@ -83,10 +84,10 @@ def _split_light_curves_by_band(
         single_band["band"] = band
 
         single_band["object_mag"] = single_band[f"{band}_psfMag"]
-        single_band = single_band.drop(columns=[f"{band}_psfMag" for band in LSDB_BANDS])
+        single_band = single_band.drop(columns=[f"{b}_psfMag" for b in bands])
 
         single_band["extendedness"] = single_band[f"{band}_extendedness"]
-        single_band = single_band.drop(columns=[f"{band}_extendedness" for band in LSDB_BANDS])
+        single_band = single_band.drop(columns=[f"{b}_extendedness" for b in bands])
 
         single_band_dfs.append(single_band)
 
@@ -357,6 +358,7 @@ def dp1_catalog_multi_band(
     phot: Literal["PSF"],
     mode: Literal["forced"],
     variability_detectors: Sequence[Callable] | Literal["all"] = "all",
+    pre_filter_partition: Callable[[NestedFrame], NestedFrame] | None = None,
 ):
     """Rubin DP1 LSDB catalog, bands are one-hot encoded.
 
@@ -397,6 +399,10 @@ def dp1_catalog_multi_band(
         Which variability detectors are to pass to
         `get_combined_variability_detector()`, default passing `None` which means
         using all of them.
+    pre_filter_partition : callable or None
+        Optional function applied to each catalog partition before any other
+        processing. Receives a ``NestedFrame`` and returns a filtered
+        ``NestedFrame``.
 
     Returns
     -------
@@ -420,6 +426,9 @@ def dp1_catalog_multi_band(
         mode=mode,
         read_visit_cols=True,
     )
+
+    if pre_filter_partition is not None:
+        catalog = catalog.map_partitions(pre_filter_partition)
 
     if variability_detectors == "all":
         variability_detectors = None

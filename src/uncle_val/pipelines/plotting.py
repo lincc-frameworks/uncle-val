@@ -212,8 +212,11 @@ def _get_hists(
         device=torch.device(device),
     )
 
-    with Client(n_workers=n_workers, threads_per_worker=1, memory_limit="8GB") as client:
-        print(f"Dask Dashboard Link: {client.dashboard_link}")
+    with Client(n_workers=n_workers, threads_per_worker=1, memory_limit="64GB") as client:
+        try:
+            print(f"Dask Dashboard Link: {client.dashboard_link}")
+        except KeyError as e:
+            print(f"Cannot get Dask Dashboard Link: {e}")
         hists_df = hists.compute()
 
     return hists_df

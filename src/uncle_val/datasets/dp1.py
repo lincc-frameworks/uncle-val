@@ -130,7 +130,9 @@ def _read_ccd_visit_table(path, columns):
     if columns is None or "seeing" in columns:
         seeing = pa.array(df["seeing"])
         replace_value = np.nanmean(seeing)
-        nan_seeing_mask = pa.compute.is_nan(seeing).combine_chunks()
+        nan_seeing_mask = pa.compute.is_nan(seeing)
+        if isinstance(nan_seeing_mask, pa.ChunkedArray):
+            nan_seeing_mask = nan_seeing_mask.combine_chunks()
         df["seeing"] = pa.compute.replace_with_mask(seeing, nan_seeing_mask, replace_value)
     if columns is None or "detectorId" in columns:
         detector_cols = _polar_encode_detector(df["detectorId"])

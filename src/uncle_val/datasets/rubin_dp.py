@@ -5,7 +5,7 @@ from typing import Literal
 import lsdb
 import numpy as np
 import pandas as pd
-import pyarrow as pa
+import pyarrow.feather as feather
 from nested_pandas import NestedFrame
 from upath import UPath
 
@@ -125,19 +125,10 @@ def _polar_encode_detector(arr) -> dict[str, np.ndarray]:
 
 
 def _read_ccd_visit_table(path, columns):
-    df = pd.read_parquet(path, columns=columns, dtype_backend="pyarrow")
-    # Patch seeing
-    if columns is None or "seeing" in columns:
-        seeing = pa.array(df["seeing"])
-        replace_value = np.nanmean(seeing)
-        nan_seeing_mask = pa.compute.is_nan(seeing)
-        if isinstance(nan_seeing_mask, pa.ChunkedArray):
-            nan_seeing_mask = nan_seeing_mask.combine_chunks()
-        df["seeing"] = pa.compute.replace_with_mask(seeing, nan_seeing_mask, replace_value)
-    if columns is None or "detectorId" in columns:
-        detector_cols = _polar_encode_detector(df["detectorId"])
-        df = df.assign(**detector_cols)
-    return df
+    polar_cols = ["detector_rho", "detector_cos_phi", "detector_sin_phi"]
+    if columns is not None:
+        columns = list(columns) + [c for c in polar_cols if c not in columns]
+    return feather.read_table(path, columns=columns, memory_map=True).to_pandas()
 
 
 def _add_visit_info(df, *, lc_col, ccd_visits_path, ccd_visits_cols):
@@ -437,7 +428,7 @@ def rubin_dp_catalog_multi_band(
         variability_detectors = None
     var_detector = get_combined_variability_detector(variability_detectors)
 
-    ccd_visits_path = root / "public_parquet" / "ccd_visit.parquet"
+    ccd_visits_path = root / "public_parquet" / "ccd_visit_prepared.feather"
     ccd_visits_cols = ["visitId", "detectorId", "expTime", "seeing", "skyBg"]
 
     mapped_catalog = catalog.map_partitions(

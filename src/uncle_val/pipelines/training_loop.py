@@ -18,7 +18,7 @@ from uncle_val.learning.losses import UncleLoss
 from uncle_val.learning.lsdb_dataset import LSDBIterableDataset
 from uncle_val.learning.models import BaseUncleModel
 from uncle_val.learning.training import train_step
-from uncle_val.pipelines.splits import TEST_SPLIT, TRAIN_SPLIT, VALIDATION_SPLIT
+from uncle_val.pipelines.splits import DP1_SURVEY_CONFIG, SurveyConfig
 from uncle_val.pipelines.utils import _launch_tfboard
 from uncle_val.pipelines.validation_set_utils import get_val_stats
 
@@ -64,6 +64,7 @@ def training_loop(
     output_root: str | Path,
     device: str | torch.device,
     model_name: str,
+    survey_config: SurveyConfig = DP1_SURVEY_CONFIG,
 ):
     """Run a training loop for a given model on a given catalog.
 
@@ -104,6 +105,8 @@ def training_loop(
         Torch device to use for training.
     model_name : str
         Name of the model to use in the output Torch filename.
+    survey_config : SurveyConfig, optional
+        Train/val/test split boundaries. Defaults to DP1_SURVEY_CONFIG.
 
     Returns
     -------
@@ -142,7 +145,7 @@ def training_loop(
             n_src=n_src,
             partitions_per_chunk=n_workers * 8,
             loop=False,
-            hash_range=VALIDATION_SPLIT,
+            hash_range=survey_config.val_split,
             seed=1,
             device=device,
         )
@@ -240,7 +243,7 @@ def training_loop(
                     n_src=n_src,
                     partitions_per_chunk=n_workers * 2,
                     loop=True,
-                    hash_range=TRAIN_SPLIT,
+                    hash_range=survey_config.train_split,
                     seed=0,
                     device=device,
                 )
@@ -279,7 +282,7 @@ def training_loop(
                 n_src=n_src,
                 partitions_per_chunk=n_workers * 8,
                 loop=False,
-                hash_range=TEST_SPLIT,
+                hash_range=survey_config.test_split,
                 seed=2,
                 device=device,
             )

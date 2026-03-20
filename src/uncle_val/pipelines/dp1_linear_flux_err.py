@@ -5,6 +5,7 @@ import torch
 from uncle_val.datasets import dp1_catalog_single_band
 from uncle_val.learning.losses import UncleLoss
 from uncle_val.learning.models import LinearModel
+from uncle_val.pipelines.splits import DP1_SURVEY_CONFIG, SurveyConfig
 from uncle_val.pipelines.training_loop import training_loop
 
 
@@ -25,6 +26,7 @@ def run_dp1_linear_flux_err(
     log_activations: bool = False,
     snapshot_every: int = 128,
     device: str | torch.device = "cpu",
+    survey_config: SurveyConfig = DP1_SURVEY_CONFIG,
 ) -> Path:
     """Run the training for DP1 with the linear model on fluxes and errors
 
@@ -61,6 +63,8 @@ def run_dp1_linear_flux_err(
         Where to save the intermediate results.
     device : str or torch.device, optional
         Torch device to use for training, default is "cpu".
+    survey_config : SurveyConfig, optional
+        Train/val/test split boundaries. Defaults to DP1_SURVEY_CONFIG.
 
     Returns
     -------
@@ -105,4 +109,5 @@ def run_dp1_linear_flux_err(
         start_tfboard=start_tfboard,
         log_activations=log_activations,
         model_name="linear",
+        survey_config=survey_config,
     )

@@ -12,8 +12,8 @@ from farmhash import Fingerprint32
 PARENT_DIR = Path(__file__).resolve().parent
 
 
-def get_dp1_data_dir():
-    """Default location of DP1 data"""
+def get_rubin_dp_data_dir():
+    """Default location of Rubin DP data"""
     path = PARENT_DIR.parent.parent / "data" / "dp1"
     if not path.exists():
         raise FileNotFoundError(path)
@@ -29,8 +29,8 @@ def get_test_data_dir():
 
 def parse_args(argv):
     """Parse command line arguments"""
-    parser = argparse.ArgumentParser("Create test data from DP1 catalogs")
-    parser.add_argument("-i", "--input-root", type=Path, default=get_dp1_data_dir())
+    parser = argparse.ArgumentParser("Create test data from Rubin DP catalogs")
+    parser.add_argument("-i", "--input-root", type=Path, default=get_rubin_dp_data_dir())
     parser.add_argument("-o", "--output-root", type=Path, default=get_test_data_dir())
     parser.add_argument("-w", "--num-workers", type=int, default=4, help="Number of Dask workers")
     return parser.parse_args(argv)

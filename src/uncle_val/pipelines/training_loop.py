@@ -18,7 +18,7 @@ from uncle_val.learning.losses import UncleLoss
 from uncle_val.learning.lsdb_dataset import LSDBIterableDataset
 from uncle_val.learning.models import BaseUncleModel
 from uncle_val.learning.training import train_step
-from uncle_val.pipelines.splits import TEST_SPLIT, TRAIN_SPLIT, VALIDATION_SPLIT
+from uncle_val.pipelines.splits import SurveyConfig
 from uncle_val.pipelines.utils import _launch_tfboard
 from uncle_val.pipelines.validation_set_utils import get_val_stats
 
@@ -51,11 +51,9 @@ def training_loop(
     columns: list[str] | None,
     model: BaseUncleModel,
     n_workers: int,
-    n_src: int,
     n_lcs: int,
     train_batch_size: int,
     val_batch_size: int,
-    snapshot_every: int,
     loss_fn: UncleLoss,
     val_losses: dict[str, UncleLoss],
     lr: float,
@@ -64,6 +62,7 @@ def training_loop(
     output_root: str | Path,
     device: str | torch.device,
     model_name: str,
+    survey_config: SurveyConfig,
 ):
     """Run a training loop for a given model on a given catalog.
 
@@ -77,16 +76,12 @@ def training_loop(
         Model to train.
     n_workers : int
         Number of Dask workers to use.
-    n_src : int
-        Number of sources to use per light curve.
     n_lcs : int
         Number of light curves to train on.
     train_batch_size : int
         Batch size for training set.
     val_batch_size : int
         Batch size for validation set.
-    snapshot_every : int
-        Snapshot model and metrics every this many training batches.
     loss_fn : UncleLoss
         Loss function to use, by default soften Χ² is used.
     val_losses : dict[str, UncleLoss]
@@ -104,12 +99,15 @@ def training_loop(
         Torch device to use for training.
     model_name : str
         Name of the model to use in the output Torch filename.
+    survey_config : SurveyConfig
+        Train/val/test split boundaries and survey parameters.
 
     Returns
     -------
     Path
         Path to the output model.
     """
+    n_src = survey_config.n_src
     n_train_batches = int(np.ceil(n_lcs / train_batch_size))
 
     device = torch.device(device)
@@ -142,14 +140,21 @@ def training_loop(
             n_src=n_src,
             partitions_per_chunk=n_workers * 8,
             loop=False,
-            hash_range=VALIDATION_SPLIT,
+            hash_range=survey_config.val_split,
             seed=1,
             device=device,
         )
 
         with MaterializedDataLoaderContext(
-            validation_dataset_lsdb, tmp_validation_dir, cleanup=False
+            validation_dataset_lsdb,
+            tmp_validation_dir,
+            cleanup=False,
+            max_lcs=survey_config.max_val_size,
         ) as val_dataloader:
+            n_real_val_lcs = len(val_dataloader.dataset) * val_batch_size
+            snapshot_every = max(1, round(survey_config.snapshot_factor * n_real_val_lcs / train_batch_size))
+            print(f"Val set: {n_real_val_lcs:,} LCs → snapshot every {snapshot_every} batches")
+
             val_stats_future: Future | None = None
             mean_val_loss_i = 0
 
@@ -240,7 +245,7 @@ def training_loop(
                     n_src=n_src,
                     partitions_per_chunk=n_workers * 2,
                     loop=True,
-                    hash_range=TRAIN_SPLIT,
+                    hash_range=survey_config.train_split,
                     seed=0,
                     device=device,
                 )
@@ -279,12 +284,14 @@ def training_loop(
                 n_src=n_src,
                 partitions_per_chunk=n_workers * 8,
                 loop=False,
-                hash_range=TEST_SPLIT,
+                hash_range=survey_config.test_split,
                 seed=2,
                 device=device,
             )
             tmp_test_dir = output_dir / "test_shap"
-            with MaterializedDataLoaderContext(test_dataset_lsdb, tmp_test_dir) as test_dataloader:
+            with MaterializedDataLoaderContext(
+                test_dataset_lsdb, tmp_test_dir, cleanup=True
+            ) as test_dataloader:
                 shap_values, feature_data = compute_shap_values(
                     model_path=best_model_path,
                     data_loader=test_dataloader,

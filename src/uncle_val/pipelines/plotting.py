@@ -12,8 +12,9 @@ from dask.distributed import Client
 from nested_pandas import NestedDtype, NestedFrame
 from scipy.stats import norm
 
-from uncle_val.datasets.dp1 import dp1_catalog_multi_band
+from uncle_val.datasets.rubin_dp import rubin_dp_catalog_multi_band
 from uncle_val.learning.models import BaseUncleModel
+from uncle_val.pipelines.splits import SurveyConfig
 from uncle_val.utils.hashing import uniform_hash
 from uncle_val.whitening import whiten_data
 
@@ -174,7 +175,7 @@ def _extract_hists(
 
 
 def _get_hists(
-    dp1_root: str | Path,
+    rubin_dp_root: str | Path,
     *,
     hash_range: tuple[float, float] | None = None,
     bands: Sequence[str],
@@ -188,8 +189,8 @@ def _get_hists(
     z_bins: np.ndarray,
     n_samples: int,
 ):
-    catalog = dp1_catalog_multi_band(
-        dp1_root,
+    catalog = rubin_dp_catalog_multi_band(
+        rubin_dp_root,
         bands=bands,
         obj="science",
         img="cal",
@@ -306,10 +307,10 @@ def _plot_magn_vs_uu(
 
 
 def make_plots(
-    dp1_root: str | Path,
     *,
-    hash_range: tuple[float, float] | None = None,
-    min_n_src: int,
+    split: str | None = None,
+    survey_config: SurveyConfig,
+    min_n_src: int | None = None,
     non_extended_only: bool,
     n_workers: int,
     model_path: str | Path | BaseUncleModel | None,
@@ -319,16 +320,18 @@ def make_plots(
     object_mags: Sequence[float] | float = (),
     output_dir: str | Path | None = None,
 ):
-    """Plot whiten signal for a DP1 catalog, optionally corrected with a model
+    """Plot whiten signal for a Rubin DP catalog, optionally corrected with a model
 
     Parameters
     ----------
-    dp1_root : str | Path
-        The root directory of the DP1 HATS catalogs.
-    hash_range : min and max hash value (between 0 and 1) or None
-        If not None, filter by object's float hashes.
-    min_n_src : int
-        Minimum number of sources per object.
+    split : ``'train'``, ``'val'``, ``'test'``, ``'all'``, or ``None``
+        Which data split to use. ``None`` and ``'all'`` both use the full
+        dataset with no hash filtering. ``'train'``, ``'val'``, and
+        ``'test'`` use the corresponding hash range from ``survey_config``.
+    survey_config : SurveyConfig
+        Survey configuration including catalog root, split boundaries, and n_src.
+    min_n_src : int or None
+        Minimum number of sources per object. Defaults to ``survey_config.n_src``.
     non_extended_only : bool
         Whether to filter the data with `extendedness == 0.0`.
     n_workers : int
@@ -348,6 +351,20 @@ def make_plots(
         If given, output PDF plots to a given directory. If not,
          show them.
     """
+    _split_map = {
+        "train": survey_config.train_split,
+        "val": survey_config.val_split,
+        "test": survey_config.test_split,
+        None: None,
+        "all": None,
+    }
+    if split not in _split_map:
+        raise ValueError(f"split must be one of 'train', 'val', 'test', 'all', or None; got {split!r}")
+    hash_range = _split_map[split]
+    rubin_dp_root = survey_config.catalog_root
+    if min_n_src is None:
+        min_n_src = survey_config.n_src
+
     if isinstance(output_dir, str):
         output_dir = Path(output_dir)
     if isinstance(object_mags, float):
@@ -367,7 +384,7 @@ def make_plots(
     mag_centers = 0.5 * (mag_bins[1:] + mag_bins[:-1])
 
     hists = _get_hists(
-        dp1_root,
+        rubin_dp_root,
         hash_range=hash_range,
         bands=bands,
         min_n_src=min_n_src,

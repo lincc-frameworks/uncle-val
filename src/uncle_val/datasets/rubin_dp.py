@@ -1,0 +1,446 @@
+from collections.abc import Callable, Sequence
+from pathlib import Path
+from typing import Literal
+
+import lsdb
+import numpy as np
+import pandas as pd
+import pyarrow.feather as feather
+from nested_pandas import NestedFrame
+from upath import UPath
+
+from uncle_val.variability_detectors import get_combined_variability_detector
+
+LSDB_BANDS = "ugrizy"
+
+
+def _one_hot_encode_band(df, dtype: type = bool):
+    for lsdb_band in LSDB_BANDS:
+        col_name = f"is_{lsdb_band}_band"
+        df[col_name] = np.asarray(df["band"] == lsdb_band, dtype=dtype)
+    return df
+
+
+def _filter_bad_obs(df, *, lc_col, flag_cols):
+    cols = [f"{lc_col}.{flag_col}" for flag_col in flag_cols]
+    expr = " and ".join(f"~{col}" for col in cols)
+
+    filtered = df.query(expr)
+    wo_flag_cols = filtered.drop(labels=cols, axis=1)
+    return wo_flag_cols
+
+
+def _rename_columns(df, *, lc_col, id_col, flux_col, flux_err_col):
+    df = df.rename(columns={lc_col: "lc", id_col: "id"})
+    for orig, new in {flux_col: "x", flux_err_col: "err"}.items():
+        df[f"lc.{new}"] = df[f"lc.{orig}"]
+        df["lc"] = df["lc"].nest.without_field(orig)
+    return df
+
+
+def _process_partition_single_band(
+    df,
+    *,
+    lc_col,
+    id_col,
+    flux_col,
+    flux_err_col,
+    source_flag_cols,
+    band,
+    var_detector,
+):
+    # Normalize column names
+    df = _rename_columns(df, lc_col=lc_col, id_col=id_col, flux_col=flux_col, flux_err_col=flux_err_col)
+    df = df.rename(columns={f"{band}_psgMag": "object_mag", f"{band}_extendedness": "extendedness"})
+
+    # Filter by band
+    df = df.query(f"lc.band == {band!r}")
+    df = df.drop(labels=["lc.band"], axis=1)
+
+    # Filter by bad observation flags
+    df = _filter_bad_obs(df, lc_col="lc", flag_cols=source_flag_cols)
+
+    # Drop empty light curves
+    df = df.dropna(subset=["lc"])
+
+    # Filter out variable light curves
+    df = _filter_variable_lcs(df, nested_flux_col="lc.x", nested_err_col="lc.err", var_detector=var_detector)
+
+    return df
+
+
+def _split_light_curves_by_band(
+    df,
+    *,
+    bands,
+    lc_col,
+):
+    single_band_dfs = []
+
+    for band in bands:
+        single_band = df.query(f"{lc_col}.band == {band!r}")
+
+        single_band = single_band.drop(labels=[f"{lc_col}.band"], axis=1)
+        single_band["band"] = band
+
+        single_band["object_mag"] = single_band[f"{band}_psfMag"]
+        single_band = single_band.drop(columns=[f"{b}_psfMag" for b in bands])
+
+        single_band["extendedness"] = single_band[f"{band}_extendedness"]
+        single_band = single_band.drop(columns=[f"{b}_extendedness" for b in bands])
+
+        single_band_dfs.append(single_band)
+
+    if all(sb.empty for sb in single_band_dfs):
+        return single_band_dfs[0]
+
+    return pd.concat(single_band_dfs)
+
+
+def _filter_variable_lcs(df, *, nested_flux_col, nested_err_col, var_detector):
+    if len(df) == 0:
+        return df
+    is_variable = df.reduce(var_detector, nested_flux_col, nested_err_col)[0]
+    return df[~is_variable]
+
+
+def _xy_encode_detector(arr) -> tuple[np.ndarray, np.ndarray]:
+    arr = np.asarray(arr)
+    row, column = np.divmod(arr, 3)
+    x = column - 1.0
+    y = 1.0 - row
+    return x, y
+
+
+def _polar_encode_detector(arr) -> dict[str, np.ndarray]:
+    """Convert detectorId (0...8) to polar ρ, cos(ϕ), sin(ϕ) or centers"""
+    arr = np.asarray(arr)
+    x, y = _xy_encode_detector(arr)
+    rho = np.hypot(x, y)
+    # We go through angle, just for the case of both x=y=0
+    angle = np.arctan2(y, x)
+    cos_phi = np.cos(angle)
+    sin_phi = np.sin(angle)
+    return {"detector_rho": rho, "detector_cos_phi": cos_phi, "detector_sin_phi": sin_phi}
+
+
+def _read_ccd_visit_table(path, columns):
+    polar_cols = ["detector_rho", "detector_cos_phi", "detector_sin_phi"]
+    if columns is not None:
+        columns = list(columns) + [c for c in polar_cols if c not in columns]
+    return feather.read_table(path, columns=columns, memory_map=True).to_pandas()
+
+
+def _add_visit_info(df, *, lc_col, ccd_visits_path, ccd_visits_cols):
+    ordinal_idx_name = "__ordinal_idx_"
+    lsdb_idx_name = df.index.name
+    df_ordinal_idx = df.reset_index(drop=False).set_index(pd.RangeIndex(len(df), name=ordinal_idx_name))
+    # https://github.com/lincc-frameworks/nested-pandas/issues/391
+    flat_lc = df_ordinal_idx[lc_col].to_flat().reset_index(drop=False)
+
+    visits = _read_ccd_visit_table(ccd_visits_path, ccd_visits_cols)
+    merged = (
+        pd.merge(
+            visits,
+            flat_lc,
+            how="right",
+            left_on=["visitId", "detectorId"],
+            right_on=["visit", "detector"],
+        )
+        .drop(
+            # We keep detector only
+            columns=["visit", "visitId", "detector", "detectorId"],
+        )
+        .set_index(
+            ordinal_idx_name,
+        )
+    )
+
+    df_ordinal_idx = df_ordinal_idx.drop(columns=lc_col).add_nested(merged, lc_col, how="inner")
+    df = df_ordinal_idx.reset_index(drop=True).set_index(lsdb_idx_name)
+    return df
+
+
+def _process_partition_multi_band(
+    df,
+    *,
+    lc_col,
+    id_col,
+    flux_col,
+    flux_err_col,
+    source_flag_cols,
+    bands,
+    var_detector,
+    ccd_visits_path,
+    ccd_visits_cols,
+):
+    df = _rename_columns(df, lc_col=lc_col, id_col=id_col, flux_col=flux_col, flux_err_col=flux_err_col)
+
+    # Filter by bad observation flags
+    df = _filter_bad_obs(df, lc_col="lc", flag_cols=source_flag_cols)
+    df = df.dropna(subset=["lc"])
+
+    # Filter bands and split light curves (rows) by band
+    df = _split_light_curves_by_band(df, bands=bands, lc_col="lc")
+    df = df.dropna(subset=["lc", "object_mag", "extendedness"])
+
+    # Filter out variable light curves
+    df = _filter_variable_lcs(df, nested_flux_col="lc.x", nested_err_col="lc.err", var_detector=var_detector)
+
+    # Encode band names
+    df = _one_hot_encode_band(df, dtype=bool)
+
+    # Add some columns from the CCD Visits table
+    if ccd_visits_path is not None:
+        df = _add_visit_info(
+            df, lc_col="lc", ccd_visits_path=ccd_visits_path, ccd_visits_cols=ccd_visits_cols
+        )
+
+    return df
+
+
+def _open_catalog(
+    root: Path | str,
+    *,
+    bands: Sequence[str],
+    obj: Literal["science"] | Literal["dia"],
+    img: Literal["cal"] | Literal["diff"],
+    phot: Literal["PSF"],
+    mode: Literal["forced"],
+    read_visit_cols: bool,
+) -> tuple[lsdb.Catalog, dict[str, str | list[str]]]:
+    """Open right catalog with right columns, no filtering.
+    Also returns column specs dict.
+    """
+    root = UPath(root)
+
+    match obj:
+        case "science":
+            catalog_name = "object_collection"
+            id_col = "objectId"
+        case _:
+            raise NotImplementedError(f"obg '{obj}' not implemented")
+
+    match mode, obj:
+        case "forced", "science":
+            source_col = "objectForcedSource"
+        case _:
+            raise NotImplementedError(f"mode '{mode}' and obj '{obj}' are not supported")
+
+    match img:
+        case "cal":
+            phot_col_prefix = "psf"
+        case "diff":
+            phot_col_prefix = "psfDiff"
+        case _:
+            raise NotImplementedError(f"img '{img}' is not supported")
+
+    if phot != "PSF":
+        raise NotImplementedError(f"img '{img}' is not supported")
+
+    flux_col = f"{phot_col_prefix}Flux"
+    flux_err_col = f"{flux_col}Err"
+    flux_flag_col = f"{flux_col}_flag"
+
+    obj_mag_cols = [f"{band}_psfMag" for band in bands]
+
+    obj_extendedness_cols = [f"{band}_extendedness" for band in bands]
+
+    other_flag_cols = [
+        "pixelFlags_suspect",
+        "pixelFlags_saturated",
+        "pixelFlags_cr",
+        "pixelFlags_bad",
+    ]
+    visit_cols = ["visit", "detector"] if read_visit_cols else []
+
+    catalog = lsdb.open_catalog(
+        root / catalog_name,
+        columns=[
+            id_col,
+            f"{source_col}.band",
+            f"{source_col}.{flux_col}",
+            f"{source_col}.{flux_err_col}",
+            f"{source_col}.{flux_flag_col}",
+        ]
+        + [f"{source_col}.{flag_col}" for flag_col in other_flag_cols]
+        + obj_mag_cols
+        + obj_extendedness_cols
+        + [f"{source_col}.{col}" for col in visit_cols],
+    )
+    return catalog, {
+        "id_col": id_col,
+        "flux_col": flux_col,
+        "flux_err_col": flux_err_col,
+        "source_col": source_col,
+        "flux_flag_col": flux_flag_col,
+        "other_flag_cols": other_flag_cols,
+    }
+
+
+def rubin_dp_catalog_single_band(
+    root: Path | str,
+    *,
+    band: str,
+    obj: Literal["science"] | Literal["dia"],
+    img: Literal["cal"] | Literal["diff"],
+    phot: Literal["PSF"],
+    mode: Literal["forced"],
+    variability_detectors: Sequence[Callable] | Literal["all"] = "all",
+) -> lsdb.Catalog:
+    """Rubin DP1 LSDB Catalog filtered for single-band DP1 sources
+
+    Parameters
+    ----------
+    root : Path or str
+        Path to the root folder of Rubin DP HATS catalogs, e.g. one having
+        object_collection and dia_object_collection subfolders.
+    band : str
+        Band to use, one of ugrizy
+    obj : str
+        Type of object catalog, "science" or "dia".
+    img : str
+        Type of image used for photometry, "cal" (calibrated) or
+        "diff" (subtracted).
+    phot : str
+        Type of photometry, "PSF".
+    mode : str
+        Type of source coordinate mode, "forced".
+    variability_detectors : list of func(flux, err) -> bool or "all"
+        Which variability detectors are to pass to
+        `get_combined_variability_detector()`, default passing `None` which means
+        using all of them.
+
+    Returns
+    -------
+    lsdb.Catalog
+        Filtered LSDB Catalog object.
+    """
+    catalog, col_names = _open_catalog(
+        root,
+        bands=[band],
+        obj=obj,
+        img=img,
+        phot=phot,
+        mode=mode,
+        read_visit_cols=False,
+    )
+
+    if variability_detectors == "all":
+        variability_detectors = None
+    var_detector = get_combined_variability_detector(variability_detectors)
+
+    mapped_catalog = catalog.map_partitions(
+        _process_partition_single_band,
+        lc_col=col_names["source_col"],
+        source_flag_cols=[col_names["flux_flag_col"]] + col_names["other_flag_cols"],
+        id_col=col_names["id_col"],
+        flux_col=col_names["flux_col"],
+        flux_err_col=col_names["flux_err_col"],
+        band=band,
+        var_detector=var_detector,
+    )
+    return mapped_catalog
+
+
+def rubin_dp_catalog_multi_band(
+    root: Path | str,
+    *,
+    bands: Sequence[str] = LSDB_BANDS,
+    obj: Literal["science"] | Literal["dia"],
+    img: Literal["cal"] | Literal["diff"],
+    phot: Literal["PSF"],
+    mode: Literal["forced"],
+    variability_detectors: Sequence[Callable] | Literal["all"] = "all",
+    pre_filter_partition: Callable[[NestedFrame], NestedFrame] | None = None,
+):
+    """Rubin DP1 LSDB catalog, bands are one-hot encoded.
+
+    The function brakes light curves by passband, and adding
+    "is_u_band", "is_g_band", etc. columns. It replaces "u_psfMag", etc
+    columns with a single "object_mag" column. Rows with Null "object_mag"
+    values are dropped.
+    Similarly for "u_extendedness", etc, we rename it to "extendedness", and
+    drop Null values.
+
+    It filters by source's photometric flags, u_psfFlux_flag, etc.,
+    and u_extendedness_flag, etc.
+
+    It also "normalizes"
+    column names:
+    - "source" nested columns is "lc"
+    - source flux is "x"
+    - source flux error is "err"
+    - object ID is "id"
+
+    Parameters
+    ----------
+    root : Path or str
+        Path to the root folder of Rubin DP HATS catalogs, e.g. one having
+        object_collection and dia_object_collection subfolders.
+    bands : str or list of str
+        Bands to use, should be subset of ugrizy
+    obj : str
+        Type of object catalog, "science" or "dia".
+    img : str
+        Type of image used for photometry, "cal" (calibrated) or
+        "diff" (subtracted).
+    phot : str
+        Type of photometry, "PSF".
+    mode : str
+        Type of source coordinate mode, "forced".
+    variability_detectors : list of func(flux, err) -> bool or "all"
+        Which variability detectors are to pass to
+        `get_combined_variability_detector()`, default passing `None` which means
+        using all of them.
+    pre_filter_partition : callable or None
+        Optional function applied to each catalog partition before any other
+        processing. Receives a ``NestedFrame`` and returns a filtered
+        ``NestedFrame``.
+
+    Returns
+    -------
+    lsdb.Catalog
+        Filtered LSDB Catalog object.
+    """
+    if isinstance(root, str):
+        root = Path(root)
+
+    input_bands = frozenset(bands)
+    if not input_bands.issubset(LSDB_BANDS):
+        raise ValueError(f"Some of the given bands ({bands}) are not in {LSDB_BANDS}")
+    bands = [band for band in LSDB_BANDS if band in input_bands]
+
+    catalog, col_names = _open_catalog(
+        root,
+        bands=bands,
+        obj=obj,
+        img=img,
+        phot=phot,
+        mode=mode,
+        read_visit_cols=True,
+    )
+
+    if pre_filter_partition is not None:
+        catalog = catalog.map_partitions(pre_filter_partition)
+
+    if variability_detectors == "all":
+        variability_detectors = None
+    var_detector = get_combined_variability_detector(variability_detectors)
+
+    ccd_visits_path = root / "public_parquet" / "ccd_visit_prepared.feather"
+    ccd_visits_cols = ["visitId", "detectorId", "expTime", "seeing", "skyBg"]
+
+    mapped_catalog = catalog.map_partitions(
+        _process_partition_multi_band,
+        lc_col=col_names["source_col"],
+        source_flag_cols=[col_names["flux_flag_col"]] + col_names["other_flag_cols"],
+        id_col=col_names["id_col"],
+        flux_col=col_names["flux_col"],
+        flux_err_col=col_names["flux_err_col"],
+        bands=bands,
+        var_detector=var_detector,
+        ccd_visits_path=ccd_visits_path,
+        ccd_visits_cols=ccd_visits_cols,
+    )
+    return mapped_catalog

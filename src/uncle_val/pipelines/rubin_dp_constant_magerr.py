@@ -11,11 +11,9 @@ from uncle_val.pipelines.training_loop import training_loop
 
 def run_rubin_dp_constant_magerr(
     *,
-    rubin_dp_root: str | Path,
     band: str,
     non_extended_only: bool,
     n_workers: int,
-    n_src: int,
     n_lcs: int,
     train_batch_size: int,
     val_batch_size: int,
@@ -31,16 +29,12 @@ def run_rubin_dp_constant_magerr(
 
     Parameters
     ----------
-    rubin_dp_root : str or Path
-        The root directory of the Rubin DP HATS catalogs.
     band : str
         Passband to train the model on.
     non_extended_only : bool
         Whether to filter out extended sources.
     n_workers : int
         Number of Dask workers to use.
-    n_src : int
-        Number of sources to use per light curve.
     n_lcs : int
         Number of light curves to train on.
     train_batch_size : int
@@ -61,7 +55,7 @@ def run_rubin_dp_constant_magerr(
     device : str or torch.device, optional
         Torch device to use for training, default is "cpu".
     survey_config : SurveyConfig
-        Train/val/test split boundaries.
+        Survey configuration including catalog root, split boundaries, and n_src.
 
     Returns
     -------
@@ -69,7 +63,7 @@ def run_rubin_dp_constant_magerr(
         Path to the output model.
     """
     catalog = rubin_dp_catalog_single_band(
-        root=rubin_dp_root,
+        root=survey_config.catalog_root,
         band=band,
         obj="science",
         img="cal",
@@ -94,7 +88,6 @@ def run_rubin_dp_constant_magerr(
         val_losses=val_losses,
         lr=3e-3,
         n_workers=n_workers,
-        n_src=n_src,
         n_lcs=n_lcs,
         train_batch_size=train_batch_size,
         val_batch_size=val_batch_size,

@@ -51,7 +51,6 @@ def training_loop(
     columns: list[str] | None,
     model: BaseUncleModel,
     n_workers: int,
-    n_src: int,
     n_lcs: int,
     train_batch_size: int,
     val_batch_size: int,
@@ -77,8 +76,6 @@ def training_loop(
         Model to train.
     n_workers : int
         Number of Dask workers to use.
-    n_src : int
-        Number of sources to use per light curve.
     n_lcs : int
         Number of light curves to train on.
     train_batch_size : int
@@ -103,13 +100,14 @@ def training_loop(
     model_name : str
         Name of the model to use in the output Torch filename.
     survey_config : SurveyConfig
-        Train/val/test split boundaries.
+        Train/val/test split boundaries and survey parameters.
 
     Returns
     -------
     Path
         Path to the output model.
     """
+    n_src = survey_config.n_src
     n_train_batches = int(np.ceil(n_lcs / train_batch_size))
 
     device = torch.device(device)
@@ -291,7 +289,9 @@ def training_loop(
                 device=device,
             )
             tmp_test_dir = output_dir / "test_shap"
-            with MaterializedDataLoaderContext(test_dataset_lsdb, tmp_test_dir) as test_dataloader:
+            with MaterializedDataLoaderContext(
+                test_dataset_lsdb, tmp_test_dir, cleanup=True
+            ) as test_dataloader:
                 shap_values, feature_data = compute_shap_values(
                     model_path=best_model_path,
                     data_loader=test_dataloader,

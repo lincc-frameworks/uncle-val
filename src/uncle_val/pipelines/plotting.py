@@ -307,11 +307,10 @@ def _plot_magn_vs_uu(
 
 
 def make_plots(
-    rubin_dp_root: str | Path,
     *,
     split: str | None = None,
     survey_config: SurveyConfig,
-    min_n_src: int,
+    min_n_src: int | None = None,
     non_extended_only: bool,
     n_workers: int,
     model_path: str | Path | BaseUncleModel | None,
@@ -325,16 +324,14 @@ def make_plots(
 
     Parameters
     ----------
-    rubin_dp_root : str | Path
-        The root directory of the Rubin DP HATS catalogs.
     split : ``'train'``, ``'val'``, ``'test'``, ``'all'``, or ``None``
         Which data split to use. ``None`` and ``'all'`` both use the full
         dataset with no hash filtering. ``'train'``, ``'val'``, and
         ``'test'`` use the corresponding hash range from ``survey_config``.
     survey_config : SurveyConfig
-        Train/val/test split boundaries.
-    min_n_src : int
-        Minimum number of sources per object.
+        Survey configuration including catalog root, split boundaries, and n_src.
+    min_n_src : int or None
+        Minimum number of sources per object. Defaults to ``survey_config.n_src``.
     non_extended_only : bool
         Whether to filter the data with `extendedness == 0.0`.
     n_workers : int
@@ -364,6 +361,9 @@ def make_plots(
     if split not in _split_map:
         raise ValueError(f"split must be one of 'train', 'val', 'test', 'all', or None; got {split!r}")
     hash_range = _split_map[split]
+    rubin_dp_root = survey_config.catalog_root
+    if min_n_src is None:
+        min_n_src = survey_config.n_src
 
     if isinstance(output_dir, str):
         output_dir = Path(output_dir)

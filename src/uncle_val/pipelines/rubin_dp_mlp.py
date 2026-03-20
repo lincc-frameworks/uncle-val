@@ -13,9 +13,7 @@ from uncle_val.pipelines.training_loop import training_loop
 
 def run_rubin_dp_mlp(
     *,
-    rubin_dp_root: str | Path,
     n_workers: int,
-    n_src: int,
     n_lcs: int,
     train_batch_size: int,
     val_batch_size: int,
@@ -28,7 +26,7 @@ def run_rubin_dp_mlp(
     start_tfboard: bool = False,
     log_activations: bool = False,
     device: torch.device | str = "cpu",
-    bands: Sequence[str] = "ugrizy",
+    bands: Sequence[str] | None = None,
     pre_filter_partition: Callable[[NestedFrame], NestedFrame] | None = None,
     survey_config: SurveyConfig,
 ) -> tuple[Path, list[str]]:
@@ -36,12 +34,8 @@ def run_rubin_dp_mlp(
 
     Parameters
     ----------
-    rubin_dp_root : str or Path
-        The root directory of the Rubin DP HATS catalogs.
     n_workers : int
         Number of Dask workers to use.
-    n_src : int
-        Number of sources to use per light curve.
     n_lcs : int
         Number of light curves to train on.
     train_batch_size : int
@@ -67,14 +61,14 @@ def run_rubin_dp_mlp(
         Whether to log validation activations with TensorBoard session.
     device : torch.device | str
         Torch device to use for training.
-    bands : sequence of str
-        Bands to include, subset of ``ugrizy``. Defaults to all six bands.
+    bands : sequence of str or None
+        Bands to include, subset of ``ugrizy``. Defaults to ``survey_config.bands``.
     pre_filter_partition : callable or None
         Optional function applied to each catalog partition before any other
         processing. Receives a ``NestedFrame`` and returns a filtered
         ``NestedFrame``.
     survey_config : SurveyConfig
-        Train/val/test split boundaries.
+        Survey configuration including catalog root, split boundaries, and n_src.
 
     Returns
     -------
@@ -83,8 +77,9 @@ def run_rubin_dp_mlp(
     list[str]
         List of columns to use as model inputs.
     """
+    bands = survey_config.bands if bands is None else tuple(bands)
     catalog = rubin_dp_catalog_multi_band(
-        root=rubin_dp_root,
+        root=survey_config.catalog_root,
         bands=bands,
         obj="science",
         img="cal",
@@ -125,7 +120,6 @@ def run_rubin_dp_mlp(
         val_losses=val_losses,
         lr=lr,
         n_workers=n_workers,
-        n_src=n_src,
         n_lcs=n_lcs,
         train_batch_size=train_batch_size,
         val_batch_size=val_batch_size,

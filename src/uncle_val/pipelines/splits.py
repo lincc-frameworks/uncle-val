@@ -54,11 +54,6 @@ class SurveyConfig:
         return (self.test_start, 1.0)
 
 
-DP1_SURVEY_CONFIG = SurveyConfig(val_start=0.6, test_start=0.85)
+DP1_CONFIG = SurveyConfig(val_start=0.6, test_start=0.85)
 
-DP2_SURVEY_CONFIG = SurveyConfig(val_start=0.6, test_start=0.65)
-
-# Backward-compatible aliases
-TRAIN_SPLIT = DP1_SURVEY_CONFIG.train_split
-VALIDATION_SPLIT = DP1_SURVEY_CONFIG.val_split
-TEST_SPLIT = DP1_SURVEY_CONFIG.test_split
+DP2_CONFIG = SurveyConfig(val_start=0.84, test_start=0.85)

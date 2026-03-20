@@ -10,7 +10,7 @@ from nested_pandas import NestedFrame
 from uncle_val.datasets.rubin_dp import rubin_dp_catalog_multi_band
 from uncle_val.learning.feature_importance import compute_shap_values, plot_shap_summary
 from uncle_val.learning.lsdb_dataset import lsdb_nested_series_data_generator
-from uncle_val.pipelines.splits import TEST_SPLIT
+from uncle_val.pipelines.splits import DP1_CONFIG, SurveyConfig
 
 
 def _flat_obs_generator(
@@ -21,6 +21,7 @@ def _flat_obs_generator(
     n_workers: int,
     client: Client,
     device: torch.device,
+    survey_config: SurveyConfig,
 ) -> Generator[torch.Tensor, None, None]:
     """Yield flat ``(n_obs, n_features)`` tensors from catalog test-split partitions.
 
@@ -34,7 +35,7 @@ def _flat_obs_generator(
         subsample_src=False,
         partitions_per_chunk=n_workers * 8,
         loop=False,
-        hash_range=TEST_SPLIT,
+        hash_range=survey_config.test_split,
         seed=0,
     ):
         flat_df = chunk.nest.to_flat()[columns_no_prefix]
@@ -52,6 +53,7 @@ def run_rubin_dp_feature_importance(
     pre_filter_partition: Callable[[NestedFrame], NestedFrame] | None = None,
     device: str | torch.device = "cpu",
     output_path: str | Path | None = None,
+    survey_config: SurveyConfig = DP1_CONFIG,
 ) -> plt.Figure:
     """Compute and plot SHAP feature importance on the Rubin DP test split.
 
@@ -82,6 +84,8 @@ def run_rubin_dp_feature_importance(
         Torch device for model and data.
     output_path : str, Path, or None
         If given, save the figure to this path.
+    survey_config : SurveyConfig, optional
+        Train/val/test split boundaries. Defaults to ``DP1_CONFIG``.
 
     Returns
     -------
@@ -113,6 +117,7 @@ def run_rubin_dp_feature_importance(
             n_workers=n_workers,
             client=client,
             device=device,
+            survey_config=survey_config,
         )
         shap_values, feature_data = compute_shap_values(
             model_path=model_path,

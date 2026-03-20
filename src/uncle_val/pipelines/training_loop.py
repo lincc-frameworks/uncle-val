@@ -18,7 +18,7 @@ from uncle_val.learning.losses import UncleLoss
 from uncle_val.learning.lsdb_dataset import LSDBIterableDataset
 from uncle_val.learning.models import BaseUncleModel
 from uncle_val.learning.training import train_step
-from uncle_val.pipelines.splits import DP1_SURVEY_CONFIG, SurveyConfig
+from uncle_val.pipelines.splits import DP1_CONFIG, SurveyConfig
 from uncle_val.pipelines.utils import _launch_tfboard
 from uncle_val.pipelines.validation_set_utils import get_val_stats
 
@@ -64,7 +64,7 @@ def training_loop(
     output_root: str | Path,
     device: str | torch.device,
     model_name: str,
-    survey_config: SurveyConfig = DP1_SURVEY_CONFIG,
+    survey_config: SurveyConfig = DP1_CONFIG,
 ):
     """Run a training loop for a given model on a given catalog.
 
@@ -106,7 +106,7 @@ def training_loop(
     model_name : str
         Name of the model to use in the output Torch filename.
     survey_config : SurveyConfig, optional
-        Train/val/test split boundaries. Defaults to ``DP1_SURVEY_CONFIG``.
+        Train/val/test split boundaries. Defaults to ``DP1_CONFIG``.
 
     Returns
     -------

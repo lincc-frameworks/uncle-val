@@ -7,7 +7,7 @@ from nested_pandas import NestedFrame
 from uncle_val.datasets.rubin_dp import rubin_dp_catalog_multi_band
 from uncle_val.learning.losses import UncleLoss
 from uncle_val.learning.models import MLPModel
-from uncle_val.pipelines.splits import DP1_SURVEY_CONFIG, SurveyConfig
+from uncle_val.pipelines.splits import DP1_CONFIG, SurveyConfig
 from uncle_val.pipelines.training_loop import training_loop
 
 
@@ -31,7 +31,7 @@ def run_rubin_dp_mlp(
     device: torch.device | str = "cpu",
     bands: Sequence[str] = "ugrizy",
     pre_filter_partition: Callable[[NestedFrame], NestedFrame] | None = None,
-    survey_config: SurveyConfig = DP1_SURVEY_CONFIG,
+    survey_config: SurveyConfig = DP1_CONFIG,
 ) -> tuple[Path, list[str]]:
     """Run the training with the MLP model on fluxes and errors
 
@@ -77,7 +77,7 @@ def run_rubin_dp_mlp(
         processing. Receives a ``NestedFrame`` and returns a filtered
         ``NestedFrame``.
     survey_config : SurveyConfig, optional
-        Train/val/test split boundaries. Defaults to DP1_SURVEY_CONFIG.
+        Train/val/test split boundaries. Defaults to DP1_CONFIG.
 
     Returns
     -------

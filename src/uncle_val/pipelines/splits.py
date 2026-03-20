@@ -16,6 +16,13 @@ class SurveyConfig:
         Boundary between train and val sets. Must be in (0, 1).
     test_start : float
         Boundary between val and test sets. Must be in (val_start, 1).
+    max_val_size : int, optional
+        Maximum number of light curves to materialize for validation.
+        Defaults to 2**20 = 1,048,576.
+    snapshot_factor : float, optional
+        Snapshot every ``factor × real_val_size`` training light curves.
+        Computed after materialization so it scales with the actual val set.
+        Defaults to 1.0.
 
     Examples
     --------
@@ -30,6 +37,8 @@ class SurveyConfig:
 
     val_start: float
     test_start: float
+    max_val_size: int = 2**20
+    snapshot_factor: float = 1.0
 
     def __post_init__(self):
         if not (0.0 < self.val_start < self.test_start < 1.0):

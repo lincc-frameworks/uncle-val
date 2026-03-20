@@ -5,7 +5,7 @@ import torch
 from uncle_val.datasets import rubin_dp_catalog_single_band
 from uncle_val.learning.losses import UncleLoss
 from uncle_val.learning.models import LinearModel
-from uncle_val.pipelines.splits import DP1_CONFIG, SurveyConfig
+from uncle_val.pipelines.splits import SurveyConfig
 from uncle_val.pipelines.training_loop import training_loop
 
 
@@ -24,9 +24,8 @@ def run_rubin_dp_linear_flux_err(
     val_losses: dict[str, UncleLoss] | None = None,
     start_tfboard: bool = False,
     log_activations: bool = False,
-    snapshot_every: int = 128,
     device: str | torch.device = "cpu",
-    survey_config: SurveyConfig = DP1_CONFIG,
+    survey_config: SurveyConfig,
 ) -> Path:
     """Run the training with the linear model on fluxes and errors
 
@@ -48,8 +47,6 @@ def run_rubin_dp_linear_flux_err(
         Batch size for training.
     val_batch_size : int or None
         Batch size for validation.
-    snapshot_every : int
-        Snapshot model and metrics every this much training batches.
     loss_fn : UncleLoss
         Loss function to use, by default soften Χ² is used.
     val_losses : dict[str, UncleLoss] or None
@@ -63,8 +60,8 @@ def run_rubin_dp_linear_flux_err(
         Where to save the intermediate results.
     device : str or torch.device, optional
         Torch device to use for training, default is "cpu".
-    survey_config : SurveyConfig, optional
-        Train/val/test split boundaries. Defaults to DP1_CONFIG.
+    survey_config : SurveyConfig
+        Train/val/test split boundaries.
 
     Returns
     -------
@@ -103,7 +100,6 @@ def run_rubin_dp_linear_flux_err(
         n_lcs=n_lcs,
         train_batch_size=train_batch_size,
         val_batch_size=val_batch_size,
-        snapshot_every=snapshot_every,
         output_root=output_root,
         device=device,
         start_tfboard=start_tfboard,

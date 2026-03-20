@@ -45,18 +45,30 @@ class MaterializedDataLoaderContext:
         It will be deleted on the context exit.
     """
 
-    def __init__(self, input_dataset: LSDBIterableDataset, tmp_dir: Path | str, cleanup: bool):
+    def __init__(
+        self,
+        input_dataset: LSDBIterableDataset,
+        tmp_dir: Path | str,
+        cleanup: bool,
+        *,
+        max_lcs: int | None = None,
+    ):
         self.input_dataset = input_dataset
         self.tmp_dir = Path(tmp_dir)
         self.cleanup = cleanup
+        self.max_lcs = max_lcs
 
     def _serialize_data(self):
         n_chunks = 0
+        total_lcs = 0
         for chunk in self.input_dataset:
             if n_chunks >= 1e6:
                 raise RuntimeError("Number of chunks is more than a million!!!")
             torch.save(chunk, self.tmp_dir / f"chunk_{n_chunks:05d}.pt")
             n_chunks += 1
+            total_lcs += chunk.shape[0]
+            if self.max_lcs is not None and total_lcs >= self.max_lcs:
+                break
         if n_chunks == 0:
             raise RuntimeError(
                 "Dataset yielded no batches. "

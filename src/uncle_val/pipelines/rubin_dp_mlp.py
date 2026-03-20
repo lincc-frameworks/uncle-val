@@ -7,7 +7,7 @@ from nested_pandas import NestedFrame
 from uncle_val.datasets.rubin_dp import rubin_dp_catalog_multi_band
 from uncle_val.learning.losses import UncleLoss
 from uncle_val.learning.models import MLPModel
-from uncle_val.pipelines.splits import DP1_CONFIG, SurveyConfig
+from uncle_val.pipelines.splits import SurveyConfig
 from uncle_val.pipelines.training_loop import training_loop
 
 
@@ -27,11 +27,10 @@ def run_rubin_dp_mlp(
     lr: float = 1e-5,
     start_tfboard: bool = False,
     log_activations: bool = False,
-    snapshot_every: int = 128,
     device: torch.device | str = "cpu",
     bands: Sequence[str] = "ugrizy",
     pre_filter_partition: Callable[[NestedFrame], NestedFrame] | None = None,
-    survey_config: SurveyConfig = DP1_CONFIG,
+    survey_config: SurveyConfig,
 ) -> tuple[Path, list[str]]:
     """Run the training with the MLP model on fluxes and errors
 
@@ -51,8 +50,6 @@ def run_rubin_dp_mlp(
         Batch size for validation.
     output_root : str or Path
         Where to save the intermediate results.
-    snapshot_every : int
-        Snapshot model and metrics every this much training batches.
     loss_fn : UncleLoss
         Loss function to use, by default soften Χ² is used.
     val_losses : dict[str, UncleLoss] or None
@@ -76,8 +73,8 @@ def run_rubin_dp_mlp(
         Optional function applied to each catalog partition before any other
         processing. Receives a ``NestedFrame`` and returns a filtered
         ``NestedFrame``.
-    survey_config : SurveyConfig, optional
-        Train/val/test split boundaries. Defaults to DP1_CONFIG.
+    survey_config : SurveyConfig
+        Train/val/test split boundaries.
 
     Returns
     -------
@@ -132,7 +129,6 @@ def run_rubin_dp_mlp(
         n_lcs=n_lcs,
         train_batch_size=train_batch_size,
         val_batch_size=val_batch_size,
-        snapshot_every=snapshot_every,
         output_root=output_root,
         start_tfboard=start_tfboard,
         log_activations=log_activations,

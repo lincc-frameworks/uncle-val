@@ -18,7 +18,7 @@ from uncle_val.learning.losses import UncleLoss
 from uncle_val.learning.lsdb_dataset import LSDBIterableDataset
 from uncle_val.learning.models import BaseUncleModel
 from uncle_val.learning.training import train_step
-from uncle_val.pipelines.splits import DP1_CONFIG, SurveyConfig
+from uncle_val.pipelines.splits import SurveyConfig
 from uncle_val.pipelines.utils import _launch_tfboard
 from uncle_val.pipelines.validation_set_utils import get_val_stats
 
@@ -55,7 +55,6 @@ def training_loop(
     n_lcs: int,
     train_batch_size: int,
     val_batch_size: int,
-    snapshot_every: int,
     loss_fn: UncleLoss,
     val_losses: dict[str, UncleLoss],
     lr: float,
@@ -64,7 +63,7 @@ def training_loop(
     output_root: str | Path,
     device: str | torch.device,
     model_name: str,
-    survey_config: SurveyConfig = DP1_CONFIG,
+    survey_config: SurveyConfig,
 ):
     """Run a training loop for a given model on a given catalog.
 
@@ -86,8 +85,6 @@ def training_loop(
         Batch size for training set.
     val_batch_size : int
         Batch size for validation set.
-    snapshot_every : int
-        Snapshot model and metrics every this many training batches.
     loss_fn : UncleLoss
         Loss function to use, by default soften Χ² is used.
     val_losses : dict[str, UncleLoss]
@@ -105,8 +102,8 @@ def training_loop(
         Torch device to use for training.
     model_name : str
         Name of the model to use in the output Torch filename.
-    survey_config : SurveyConfig, optional
-        Train/val/test split boundaries. Defaults to ``DP1_CONFIG``.
+    survey_config : SurveyConfig
+        Train/val/test split boundaries.
 
     Returns
     -------
@@ -151,8 +148,15 @@ def training_loop(
         )
 
         with MaterializedDataLoaderContext(
-            validation_dataset_lsdb, tmp_validation_dir, cleanup=False
+            validation_dataset_lsdb,
+            tmp_validation_dir,
+            cleanup=False,
+            max_lcs=survey_config.max_val_size,
         ) as val_dataloader:
+            n_real_val_lcs = len(val_dataloader.dataset) * val_batch_size
+            snapshot_every = max(1, round(survey_config.snapshot_factor * n_real_val_lcs / train_batch_size))
+            print(f"Val set: {n_real_val_lcs:,} LCs → snapshot every {snapshot_every} batches")
+
             val_stats_future: Future | None = None
             mean_val_loss_i = 0
 

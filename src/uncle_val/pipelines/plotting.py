@@ -14,6 +14,7 @@ from scipy.stats import norm
 
 from uncle_val.datasets.rubin_dp import rubin_dp_catalog_multi_band
 from uncle_val.learning.models import BaseUncleModel
+from uncle_val.pipelines.splits import SurveyConfig
 from uncle_val.utils.hashing import uniform_hash
 from uncle_val.whitening import whiten_data
 
@@ -308,7 +309,8 @@ def _plot_magn_vs_uu(
 def make_plots(
     rubin_dp_root: str | Path,
     *,
-    hash_range: tuple[float, float] | None = None,
+    split: str | None = None,
+    survey_config: SurveyConfig,
     min_n_src: int,
     non_extended_only: bool,
     n_workers: int,
@@ -325,8 +327,12 @@ def make_plots(
     ----------
     rubin_dp_root : str | Path
         The root directory of the Rubin DP HATS catalogs.
-    hash_range : min and max hash value (between 0 and 1) or None
-        If not None, filter by object's float hashes.
+    split : ``'train'``, ``'val'``, ``'test'``, ``'all'``, or ``None``
+        Which data split to use. ``None`` and ``'all'`` both use the full
+        dataset with no hash filtering. ``'train'``, ``'val'``, and
+        ``'test'`` use the corresponding hash range from ``survey_config``.
+    survey_config : SurveyConfig
+        Train/val/test split boundaries.
     min_n_src : int
         Minimum number of sources per object.
     non_extended_only : bool
@@ -348,6 +354,17 @@ def make_plots(
         If given, output PDF plots to a given directory. If not,
          show them.
     """
+    _split_map = {
+        "train": survey_config.train_split,
+        "val": survey_config.val_split,
+        "test": survey_config.test_split,
+        None: None,
+        "all": None,
+    }
+    if split not in _split_map:
+        raise ValueError(f"split must be one of 'train', 'val', 'test', 'all', or None; got {split!r}")
+    hash_range = _split_map[split]
+
     if isinstance(output_dir, str):
         output_dir = Path(output_dir)
     if isinstance(object_mags, float):

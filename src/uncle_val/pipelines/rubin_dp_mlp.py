@@ -4,16 +4,16 @@ from pathlib import Path
 import torch
 from nested_pandas import NestedFrame
 
-from uncle_val.datasets.dp1 import dp1_catalog_multi_band
+from uncle_val.datasets.rubin_dp import rubin_dp_catalog_multi_band
 from uncle_val.learning.losses import UncleLoss
 from uncle_val.learning.models import MLPModel
 from uncle_val.pipelines.splits import DP1_SURVEY_CONFIG, SurveyConfig
 from uncle_val.pipelines.training_loop import training_loop
 
 
-def run_dp1_mlp(
+def run_rubin_dp_mlp(
     *,
-    dp1_root: str | Path,
+    rubin_dp_root: str | Path,
     n_workers: int,
     n_src: int,
     n_lcs: int,
@@ -33,16 +33,12 @@ def run_dp1_mlp(
     pre_filter_partition: Callable[[NestedFrame], NestedFrame] | None = None,
     survey_config: SurveyConfig = DP1_SURVEY_CONFIG,
 ) -> tuple[Path, list[str]]:
-    """Run the training for DP1 with the linear model on fluxes and errors
+    """Run the training with the MLP model on fluxes and errors
 
     Parameters
     ----------
-    dp1_root : str or Path
-        The root directory of the DP1 HATS catalogs.
-    band : str
-        Passband to train the model on.
-    non_extended_only : bool
-        Whether to filter out extended sources.
+    rubin_dp_root : str or Path
+        The root directory of the Rubin DP HATS catalogs.
     n_workers : int
         Number of Dask workers to use.
     n_src : int
@@ -90,8 +86,8 @@ def run_dp1_mlp(
     list[str]
         List of columns to use as model inputs.
     """
-    catalog = dp1_catalog_multi_band(
-        root=dp1_root,
+    catalog = rubin_dp_catalog_multi_band(
+        root=rubin_dp_root,
         bands=bands,
         obj="science",
         img="cal",

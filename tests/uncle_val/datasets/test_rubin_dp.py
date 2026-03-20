@@ -1,12 +1,12 @@
 import pytest
-from uncle_val.datasets.dp1 import dp1_catalog_multi_band
+from uncle_val.datasets.rubin_dp import rubin_dp_catalog_multi_band
 
 
 @pytest.mark.parametrize("img, n_obj", [("cal", 106), ("diff", 115)])
-def test_dp1_catalog_multi_band(dp1_root, img, n_obj):
-    """Test dp1_catalog_multi_band()"""
-    catalog = dp1_catalog_multi_band(
-        dp1_root,
+def test_rubin_dp_catalog_multi_band(rubin_dp_root, img, n_obj):
+    """Test rubin_dp_catalog_multi_band()"""
+    catalog = rubin_dp_catalog_multi_band(
+        rubin_dp_root,
         obj="science",
         img=img,
         phot="PSF",

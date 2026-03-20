@@ -12,7 +12,7 @@ from dask.distributed import Client
 from nested_pandas import NestedDtype, NestedFrame
 from scipy.stats import norm
 
-from uncle_val.datasets.dp1 import dp1_catalog_multi_band
+from uncle_val.datasets.rubin_dp import rubin_dp_catalog_multi_band
 from uncle_val.learning.models import BaseUncleModel
 from uncle_val.utils.hashing import uniform_hash
 from uncle_val.whitening import whiten_data
@@ -174,7 +174,7 @@ def _extract_hists(
 
 
 def _get_hists(
-    dp1_root: str | Path,
+    rubin_dp_root: str | Path,
     *,
     hash_range: tuple[float, float] | None = None,
     bands: Sequence[str],
@@ -188,8 +188,8 @@ def _get_hists(
     z_bins: np.ndarray,
     n_samples: int,
 ):
-    catalog = dp1_catalog_multi_band(
-        dp1_root,
+    catalog = rubin_dp_catalog_multi_band(
+        rubin_dp_root,
         bands=bands,
         obj="science",
         img="cal",
@@ -306,7 +306,7 @@ def _plot_magn_vs_uu(
 
 
 def make_plots(
-    dp1_root: str | Path,
+    rubin_dp_root: str | Path,
     *,
     hash_range: tuple[float, float] | None = None,
     min_n_src: int,
@@ -319,12 +319,12 @@ def make_plots(
     object_mags: Sequence[float] | float = (),
     output_dir: str | Path | None = None,
 ):
-    """Plot whiten signal for a DP1 catalog, optionally corrected with a model
+    """Plot whiten signal for a Rubin DP catalog, optionally corrected with a model
 
     Parameters
     ----------
-    dp1_root : str | Path
-        The root directory of the DP1 HATS catalogs.
+    rubin_dp_root : str | Path
+        The root directory of the Rubin DP HATS catalogs.
     hash_range : min and max hash value (between 0 and 1) or None
         If not None, filter by object's float hashes.
     min_n_src : int
@@ -367,7 +367,7 @@ def make_plots(
     mag_centers = 0.5 * (mag_bins[1:] + mag_bins[:-1])
 
     hists = _get_hists(
-        dp1_root,
+        rubin_dp_root,
         hash_range=hash_range,
         bands=bands,
         min_n_src=min_n_src,

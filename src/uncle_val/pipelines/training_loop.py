@@ -106,7 +106,7 @@ def training_loop(
     model_name : str
         Name of the model to use in the output Torch filename.
     survey_config : SurveyConfig, optional
-        Train/val/test split boundaries. Defaults to DP1_SURVEY_CONFIG.
+        Train/val/test split boundaries. Defaults to ``DP1_SURVEY_CONFIG``.
 
     Returns
     -------

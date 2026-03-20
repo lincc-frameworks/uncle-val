@@ -1,13 +1,13 @@
-from .dp1_constant_magerr import run_dp1_constant_magerr
-from .dp1_feature_importance import run_dp1_feature_importance
-from .dp1_linear_flux_err import run_dp1_linear_flux_err
-from .dp1_mlp import run_dp1_mlp
 from .plotting import make_plots
+from .rubin_dp_constant_magerr import run_rubin_dp_constant_magerr
+from .rubin_dp_feature_importance import run_rubin_dp_feature_importance
+from .rubin_dp_linear_flux_err import run_rubin_dp_linear_flux_err
+from .rubin_dp_mlp import run_rubin_dp_mlp
 
 __all__ = (
     "make_plots",
-    "run_dp1_constant_magerr",
-    "run_dp1_feature_importance",
-    "run_dp1_linear_flux_err",
-    "run_dp1_mlp",
+    "run_rubin_dp_constant_magerr",
+    "run_rubin_dp_feature_importance",
+    "run_rubin_dp_linear_flux_err",
+    "run_rubin_dp_mlp",
 )

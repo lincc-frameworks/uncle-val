@@ -2,16 +2,16 @@ from pathlib import Path
 
 import torch
 
-from uncle_val.datasets import dp1_catalog_single_band
+from uncle_val.datasets import rubin_dp_catalog_single_band
 from uncle_val.learning.losses import UncleLoss
 from uncle_val.learning.models import LinearModel
 from uncle_val.pipelines.splits import DP1_SURVEY_CONFIG, SurveyConfig
 from uncle_val.pipelines.training_loop import training_loop
 
 
-def run_dp1_linear_flux_err(
+def run_rubin_dp_linear_flux_err(
     *,
-    dp1_root: str | Path,
+    rubin_dp_root: str | Path,
     band: str,
     non_extended_only: bool,
     n_workers: int,
@@ -28,12 +28,12 @@ def run_dp1_linear_flux_err(
     device: str | torch.device = "cpu",
     survey_config: SurveyConfig = DP1_SURVEY_CONFIG,
 ) -> Path:
-    """Run the training for DP1 with the linear model on fluxes and errors
+    """Run the training with the linear model on fluxes and errors
 
     Parameters
     ----------
-    dp1_root : str or Path
-        The root directory of the DP1 HATS catalogs.
+    rubin_dp_root : str or Path
+        The root directory of the Rubin DP HATS catalogs.
     band : str
         Passband to train the model on.
     non_extended_only : bool
@@ -71,8 +71,8 @@ def run_dp1_linear_flux_err(
     Path
         Path to the output model.
     """
-    catalog = dp1_catalog_single_band(
-        root=dp1_root,
+    catalog = rubin_dp_catalog_single_band(
+        root=rubin_dp_root,
         band=band,
         obj="science",
         img="cal",

@@ -58,6 +58,6 @@ def test_data_root():
 
 
 @pytest.fixture
-def dp1_root(test_data_root):
-    """Path of the test subset of DP1 data"""
+def rubin_dp_root(test_data_root):
+    """Path of the test subset of Rubin DP data"""
     return test_data_root / "dp1"

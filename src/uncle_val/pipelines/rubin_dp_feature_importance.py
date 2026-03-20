@@ -7,7 +7,7 @@ import torch
 from dask.distributed import Client
 from nested_pandas import NestedFrame
 
-from uncle_val.datasets.dp1 import dp1_catalog_multi_band
+from uncle_val.datasets.rubin_dp import rubin_dp_catalog_multi_band
 from uncle_val.learning.feature_importance import compute_shap_values, plot_shap_summary
 from uncle_val.learning.lsdb_dataset import lsdb_nested_series_data_generator
 from uncle_val.pipelines.splits import TEST_SPLIT
@@ -41,9 +41,9 @@ def _flat_obs_generator(
         yield torch.tensor(flat_df.to_numpy(dtype=np.float32), device=device)
 
 
-def run_dp1_feature_importance(
+def run_rubin_dp_feature_importance(
     *,
-    dp1_root: str | Path,
+    rubin_dp_root: str | Path,
     model_path: str | Path,
     model_columns: list[str],
     n_workers: int,
@@ -53,20 +53,20 @@ def run_dp1_feature_importance(
     device: str | torch.device = "cpu",
     output_path: str | Path | None = None,
 ) -> plt.Figure:
-    """Compute and plot SHAP feature importance on the DP1 test split.
+    """Compute and plot SHAP feature importance on the Rubin DP test split.
 
     All observations from qualifying light curves are used — no subsampling
     is applied. Light curves with fewer than `n_src` observations are excluded.
 
     Parameters
     ----------
-    dp1_root : str or Path
-        Root directory of the DP1 HATS catalogs.
+    rubin_dp_root : str or Path
+        Root directory of the Rubin DP HATS catalogs.
     model_path : str or Path
         Path to the saved model checkpoint.
     model_columns : list of str
         Columns used as model inputs (with ``lc.`` prefix for nested columns),
-        as returned by :func:`~uncle_val.pipelines.dp1_mlp.run_dp1_mlp`.
+        as returned by :func:`~uncle_val.pipelines.rubin_dp_mlp.run_rubin_dp_mlp`.
     n_workers : int
         Number of Dask workers.
     n_src : int, optional
@@ -91,8 +91,8 @@ def run_dp1_feature_importance(
     device = torch.device(device)
     columns_no_prefix = [col.removeprefix("lc.") for col in model_columns]
 
-    catalog = dp1_catalog_multi_band(
-        root=dp1_root,
+    catalog = rubin_dp_catalog_multi_band(
+        root=rubin_dp_root,
         bands=bands,
         obj="science",
         img="cal",

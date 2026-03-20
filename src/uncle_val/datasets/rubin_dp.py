@@ -287,7 +287,7 @@ def _open_catalog(
     }
 
 
-def dp1_catalog_single_band(
+def rubin_dp_catalog_single_band(
     root: Path | str,
     *,
     band: str,
@@ -302,7 +302,7 @@ def dp1_catalog_single_band(
     Parameters
     ----------
     root : Path or str
-        Path to the root folder of dp1 HATS catalogs, e.g. one having
+        Path to the root folder of Rubin DP HATS catalogs, e.g. one having
         object_collection and dia_object_collection subfolders.
     band : str
         Band to use, one of ugrizy
@@ -352,7 +352,7 @@ def dp1_catalog_single_band(
     return mapped_catalog
 
 
-def dp1_catalog_multi_band(
+def rubin_dp_catalog_multi_band(
     root: Path | str,
     *,
     bands: Sequence[str] = LSDB_BANDS,
@@ -385,7 +385,7 @@ def dp1_catalog_multi_band(
     Parameters
     ----------
     root : Path or str
-        Path to the root folder of dp1 HATS catalogs, e.g. one having
+        Path to the root folder of Rubin DP HATS catalogs, e.g. one having
         object_collection and dia_object_collection subfolders.
     bands : str or list of str
         Bands to use, should be subset of ugrizy

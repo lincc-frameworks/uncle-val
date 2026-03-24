@@ -63,7 +63,7 @@ def run_rubin_dp_feature_importance(
         Path to the saved model checkpoint.
     model_columns : list of str
         Columns used as model inputs (with ``lc.`` prefix for nested columns),
-        as returned by :func:`~uncle_val.pipelines.rubin_dp_mlp.run_rubin_dp_mlp`.
+        as returned by :func:`~uncle_val.pipelines.train_on_rubin_dp.train_on_rubin_dp`.
     bands : sequence of str or None
         Bands to include, subset of ``ugrizy``. Defaults to ``survey_config.bands``.
     pre_filter_partition : callable or None

@@ -8,40 +8,26 @@ from uncle_val.datasets.rubin_dp import rubin_dp_catalog_multi_band
 from uncle_val.learning.losses import UncleLoss
 from uncle_val.learning.models import MLPModel
 from uncle_val.pipelines.splits import SurveyConfig
+from uncle_val.pipelines.training_config import TrainingConfig
 from uncle_val.pipelines.training_loop import training_loop
 
 
 def run_rubin_dp_mlp(
     *,
-    n_workers: int,
-    n_lcs: int,
-    train_batch_size: int,
-    val_batch_size: int,
     output_root: str | Path,
     loss_fn: UncleLoss,
     val_losses: dict[str, UncleLoss] | None = None,
     load_model_path: str | Path | None = None,
     model_kwargs: dict[str, object] | None = None,
-    lr: float = 1e-5,
-    start_tfboard: bool = False,
-    log_activations: bool = False,
-    device: torch.device | str = "cpu",
     bands: Sequence[str] | None = None,
     pre_filter_partition: Callable[[NestedFrame], NestedFrame] | None = None,
     survey_config: SurveyConfig,
+    training_config: TrainingConfig,
 ) -> tuple[Path, list[str]]:
     """Run the training with the MLP model on fluxes and errors
 
     Parameters
     ----------
-    n_workers : int
-        Number of Dask workers to use.
-    n_lcs : int
-        Number of light curves to train on.
-    train_batch_size : int
-        Batch size for training.
-    val_batch_size : int or None
-        Batch size for validation.
     output_root : str or Path
         Where to save the intermediate results.
     loss_fn : UncleLoss
@@ -53,14 +39,6 @@ def run_rubin_dp_mlp(
         Pre-trained model to continue training from.
     model_kwargs : dict | None
         MLPModel kwargs.
-    lr : float
-        Learning rate.
-    start_tfboard : bool
-        Whether to start a TensorBoard session.
-    log_activations : bool
-        Whether to log validation activations with TensorBoard session.
-    device : torch.device | str
-        Torch device to use for training.
     bands : sequence of str or None
         Bands to include, subset of ``ugrizy``. Defaults to ``survey_config.bands``.
     pre_filter_partition : callable or None
@@ -69,6 +47,8 @@ def run_rubin_dp_mlp(
         ``NestedFrame``.
     survey_config : SurveyConfig
         Survey configuration including catalog root, split boundaries, and n_src.
+    training_config : TrainingConfig
+        Training operational parameters (workers, batch sizes, lr, device, etc.).
 
     Returns
     -------
@@ -107,7 +87,9 @@ def run_rubin_dp_mlp(
             actual_model_kwargs.update(model_kwargs)
         model = MLPModel(input_names=columns_no_prefix, **actual_model_kwargs)
     else:
-        model = torch.load(load_model_path, weights_only=False, map_location=device)
+        model = torch.load(
+            load_model_path, weights_only=False, map_location=training_config.compute_config.device
+        )
 
     if val_losses is None:
         val_losses = {}
@@ -118,16 +100,9 @@ def run_rubin_dp_mlp(
         model=model,
         loss_fn=loss_fn,
         val_losses=val_losses,
-        lr=lr,
-        n_workers=n_workers,
-        n_lcs=n_lcs,
-        train_batch_size=train_batch_size,
-        val_batch_size=val_batch_size,
         output_root=output_root,
-        start_tfboard=start_tfboard,
-        log_activations=log_activations,
-        device=device,
         model_name="mlp",
         survey_config=survey_config,
+        training_config=training_config,
     )
     return model_path, columns

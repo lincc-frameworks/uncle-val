@@ -19,6 +19,7 @@ from uncle_val.learning.lsdb_dataset import LSDBIterableDataset
 from uncle_val.learning.models import BaseUncleModel
 from uncle_val.learning.training import train_step
 from uncle_val.pipelines.splits import SurveyConfig
+from uncle_val.pipelines.training_config import TrainingConfig
 from uncle_val.pipelines.utils import _launch_tfboard
 from uncle_val.pipelines.validation_set_utils import get_val_stats
 
@@ -50,19 +51,12 @@ def training_loop(
     catalog: lsdb.Catalog,
     columns: list[str] | None,
     model: BaseUncleModel,
-    n_workers: int,
-    n_lcs: int,
-    train_batch_size: int,
-    val_batch_size: int,
     loss_fn: UncleLoss,
     val_losses: dict[str, UncleLoss],
-    lr: float,
-    start_tfboard: bool,
-    log_activations: bool,
     output_root: str | Path,
-    device: str | torch.device,
     model_name: str,
     survey_config: SurveyConfig,
+    training_config: TrainingConfig,
 ):
     """Run a training loop for a given model on a given catalog.
 
@@ -74,33 +68,19 @@ def training_loop(
         Columns to train on.
     model : BaseUncleModel
         Model to train.
-    n_workers : int
-        Number of Dask workers to use.
-    n_lcs : int
-        Number of light curves to train on.
-    train_batch_size : int
-        Batch size for training set.
-    val_batch_size : int
-        Batch size for validation set.
     loss_fn : UncleLoss
         Loss function to use, by default soften Χ² is used.
     val_losses : dict[str, UncleLoss]
         Extra losses to compute on validation set and record, it maps name to
         loss function.
-    lr : float
-        Learning rate.
-    start_tfboard : bool
-        Whether to start a TensorBoard session.
-    log_activations : bool
-        Whether to log validation activations with TensorBoard session.
     output_root : str or Path
         Where to save the intermediate results.
-    device : str or torch.device
-        Torch device to use for training.
     model_name : str
         Name of the model to use in the output Torch filename.
     survey_config : SurveyConfig
         Train/val/test split boundaries and survey parameters.
+    training_config : TrainingConfig
+        Training operational parameters (workers, batch sizes, lr, device, etc.).
 
     Returns
     -------
@@ -108,9 +88,9 @@ def training_loop(
         Path to the output model.
     """
     n_src = survey_config.n_src
-    n_train_batches = int(np.ceil(n_lcs / train_batch_size))
+    n_train_batches = int(np.ceil(training_config.n_lcs / training_config.train_batch_size))
 
-    device = torch.device(device)
+    device = torch.device(training_config.compute_config.device)
 
     output_root = Path(output_root)
     output_dir = Path(output_root) / datetime.now().strftime("%Y-%m-%d_%H-%M")
@@ -118,15 +98,17 @@ def training_loop(
     intermediate_model_dir.mkdir(parents=True, exist_ok=True)
     tmp_validation_dir = output_dir / "validation"
 
-    if start_tfboard:
+    if training_config.start_tfboard:
         _launch_tfboard(output_root)
     summary_writer = SummaryWriter(log_dir=str(output_dir))
 
-    optimizer = Adam(model.parameters(), lr=lr)
+    optimizer = Adam(model.parameters(), lr=training_config.lr)
     scheduler = ReduceLROnPlateau(optimizer, factor=10**-0.5, patience=16, cooldown=32, eps=1e-10)
     model = model.to(device)
 
-    with Client(n_workers=n_workers, memory_limit="8GB", threads_per_worker=1) as client:
+    with Client(
+        n_workers=training_config.compute_config.n_workers, memory_limit="8GB", threads_per_worker=1
+    ) as client:
         try:
             print(f"Dask Dashboard Link: {client.dashboard_link}")
         except KeyError as e:
@@ -136,9 +118,9 @@ def training_loop(
             catalog=catalog,
             columns=columns,
             client=client,
-            batch_lc=val_batch_size,
+            batch_lc=training_config.val_batch_size,
             n_src=n_src,
-            partitions_per_chunk=n_workers * 8,
+            partitions_per_chunk=training_config.compute_config.n_workers * 8,
             loop=False,
             hash_range=survey_config.val_split,
             seed=1,
@@ -149,10 +131,12 @@ def training_loop(
             validation_dataset_lsdb,
             tmp_validation_dir,
             cleanup=False,
-            max_lcs=survey_config.max_val_size,
+            max_lcs=training_config.max_val_size,
         ) as val_dataloader:
-            n_real_val_lcs = len(val_dataloader.dataset) * val_batch_size
-            snapshot_every = max(1, round(survey_config.snapshot_factor * n_real_val_lcs / train_batch_size))
+            n_real_val_lcs = len(val_dataloader.dataset) * training_config.val_batch_size
+            snapshot_every = max(
+                1, round(training_config.snapshot_factor * n_real_val_lcs / training_config.train_batch_size)
+            )
             print(f"Val set: {n_real_val_lcs:,} LCs → snapshot every {snapshot_every} batches")
 
             val_stats_future: Future | None = None
@@ -165,7 +149,7 @@ def training_loop(
             sum_grad_norm = tensor(float("inf"), device=device)
             max_abs_grad = tensor(float("inf"), device=device)
 
-            activation_bins = np.linspace(-2, 2, 1001) if log_activations else None
+            activation_bins = np.linspace(-2, 2, 1001)
 
             def snapshot(i):
                 nonlocal \
@@ -189,16 +173,15 @@ def training_loop(
                     val_stats = val_stats_future.result()
                     mean_val_loss = val_stats.pop("__training_loss__")
                     summary_writer.add_scalar("Mean validation loss", mean_val_loss, mean_val_loss_i)
-                    if log_activations:
-                        activation_hist = val_stats.pop("__activations_hist__")
-                        summary_writer.add_histogram(
-                            "Validation activations",
-                            np.repeat(
-                                0.5 * (activation_bins[:-1] + activation_bins[1:]),
-                                np.ceil(activation_hist / activation_hist.max() * 1000).astype(int),
-                            ),
-                            mean_val_loss_i,
-                        )
+                    activation_hist = val_stats.pop("__activations_hist__")
+                    summary_writer.add_histogram(
+                        "Validation activations",
+                        np.repeat(
+                            0.5 * (activation_bins[:-1] + activation_bins[1:]),
+                            np.ceil(activation_hist / activation_hist.max() * 1000).astype(int),
+                        ),
+                        mean_val_loss_i,
+                    )
                     for mean_val_loss_name, mean_val_loss_value in val_stats.items():
                         summary_writer.add_scalar(
                             f"Mean validation loss: {mean_val_loss_name}",
@@ -241,9 +224,9 @@ def training_loop(
                     catalog=catalog,
                     columns=columns,
                     client=client,
-                    batch_lc=train_batch_size,
+                    batch_lc=training_config.train_batch_size,
                     n_src=n_src,
-                    partitions_per_chunk=n_workers * 2,
+                    partitions_per_chunk=training_config.compute_config.n_workers * 2,
                     loop=True,
                     hash_range=survey_config.train_split,
                     seed=0,
@@ -275,14 +258,14 @@ def training_loop(
             snapshot(i_train_batch)
             snapshot(i_train_batch)
 
-        if best_model_path is not None and model.input_names:
+        if training_config.run_feature_importance and best_model_path is not None and model.input_names:
             test_dataset_lsdb = LSDBIterableDataset(
                 catalog=catalog,
                 columns=columns,
                 client=client,
-                batch_lc=val_batch_size,
+                batch_lc=training_config.val_batch_size,
                 n_src=n_src,
-                partitions_per_chunk=n_workers * 8,
+                partitions_per_chunk=training_config.compute_config.n_workers * 8,
                 loop=False,
                 hash_range=survey_config.test_split,
                 seed=2,

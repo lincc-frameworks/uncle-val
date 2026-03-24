@@ -15,6 +15,7 @@ from scipy.stats import norm
 from uncle_val.datasets.rubin_dp import rubin_dp_catalog_multi_band
 from uncle_val.learning.models import BaseUncleModel
 from uncle_val.pipelines.splits import SurveyConfig
+from uncle_val.pipelines.training_config import ComputeConfig
 from uncle_val.utils.hashing import uniform_hash
 from uncle_val.whitening import whiten_data
 
@@ -312,13 +313,12 @@ def make_plots(
     survey_config: SurveyConfig,
     min_n_src: int | None = None,
     non_extended_only: bool,
-    n_workers: int,
     model_path: str | Path | BaseUncleModel | None,
     model_columns: Sequence[str] = ("lc.x", "lc.err"),
     n_samples: int,
-    device: torch.device | str = "cpu",
     object_mags: Sequence[float] | float = (),
     output_dir: str | Path | None = None,
+    compute_config: ComputeConfig,
 ):
     """Plot whiten signal for a Rubin DP catalog, optionally corrected with a model
 
@@ -334,8 +334,6 @@ def make_plots(
         Minimum number of sources per object. Defaults to ``survey_config.n_src``.
     non_extended_only : bool
         Whether to filter the data with `extendedness == 0.0`.
-    n_workers : int
-        Number of Dask workers to use.
     model_path : path or None
         Path to a torch model file or None. If None, plot the original data.
     model_columns : Sequence[str], optional
@@ -343,13 +341,13 @@ def make_plots(
     n_samples : int
         Number of samples per magnitude bin to use for UU vs object mag
         plot.
-    device : torch.device | str
-        Torch device to use with the model.
     object_mags : list of float or float
         Object magnitude bins to use for histogram plots.
     output_dir : path or None
         If given, output PDF plots to a given directory. If not,
          show them.
+    compute_config : ComputeConfig
+        Compute/infrastructure parameters; ``n_workers`` and ``device`` are used.
     """
     _split_map = {
         "train": survey_config.train_split,
@@ -389,10 +387,10 @@ def make_plots(
         bands=bands,
         min_n_src=min_n_src,
         non_extended_only=non_extended_only,
-        n_workers=n_workers,
+        n_workers=compute_config.n_workers,
         model_path=model_path,
         model_columns=model_columns,
-        device=device,
+        device=compute_config.device,
         mag_bins=mag_bins,
         z_bins=z_bins,
         n_samples=n_samples,

@@ -49,7 +49,7 @@ class MagErrModel(BaseUncleModel):
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         """Compute the output of the model"""
-        systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs))
+        systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
 
         flux = torch.maximum(
             inputs[..., self.flux_column], torch.tensor(self.flux_floor, device=inputs.device)
@@ -79,3 +79,60 @@ class ConstantMagErrModel(MagErrModel):
     def module(self, inputs: torch.Tensor) -> torch.Tensor:
         """Trainable systematic magnitude error addition in centi-magnitudes."""
         return self.addition_centi_mag_err
+
+
+class LinearMagErrModel(MagErrModel):
+    """Linear model for the systematic magnitude error
+
+    A linear function of the (normalized) inputs predicts the systematic
+    magnitude error in centi-magnitudes added in quadrature to the
+    photon-noise error.
+
+    Parameters
+    ----------
+    input_names : list of str
+        Names of input dimensions. Must include a flux column (``'flux'`` or
+        ``'x'``) and an error column (``'err'``).
+    """
+
+    def __init__(self, input_names: Sequence[str] = ("flux", "err")) -> None:
+        super().__init__(input_names=input_names)
+        self.module = torch.nn.Linear(self.d_input, 1, bias=True)
+
+
+class MLPMagErrModel(MagErrModel):
+    """MLP model for the systematic magnitude error
+
+    A multi-layer perceptron predicts the systematic magnitude error in
+    centi-magnitudes added in quadrature to the photon-noise error.
+
+    Parameters
+    ----------
+    input_names : list of str
+        Names of input dimensions. Must include a flux column (``'flux'`` or
+        ``'x'``) and an error column (``'err'``).
+    d_middle : list of int
+        Sizes of hidden layers, e.g. [64, 32, 16].
+    dropout : float | None
+        Dropout probability, or None to disable dropout.
+    """
+
+    def __init__(
+        self,
+        input_names: Sequence[str] = ("flux", "err"),
+        d_middle: Sequence[int] = (300, 300, 400),
+        dropout: None | float = None,
+    ) -> None:
+        super().__init__(input_names=input_names)
+        self.d_middle = list(d_middle)
+        self.dropout = dropout
+
+        layers = []
+        dims = [self.d_input] + self.d_middle + [1]
+        for i, (d1, d2) in enumerate(zip(dims[:-1], dims[1:], strict=True)):
+            layers.append(torch.nn.Linear(d1, d2))
+            if i < len(dims) - 2:  # not the last layer
+                layers.append(torch.nn.GELU())
+                if self.dropout is not None:
+                    layers.append(torch.nn.Dropout(self.dropout))
+        self.module = torch.nn.Sequential(*layers)

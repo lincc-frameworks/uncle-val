@@ -23,13 +23,6 @@ class SurveyConfig:
         Number of observations to subsample per light curve.
     bands : tuple of str, optional
         Survey filter bands. Defaults to all six LSST bands.
-    max_val_size : int, optional
-        Maximum number of light curves to materialize for validation.
-        Defaults to 2**20 = 1,048,576.
-    snapshot_factor : float, optional
-        Snapshot every ``factor × real_val_size`` training light curves.
-        Computed after materialization so it scales with the actual val set.
-        Defaults to 1.0.
 
     Examples
     --------
@@ -47,8 +40,6 @@ class SurveyConfig:
     test_start: float
     n_src: int
     bands: tuple[str, ...] = ("u", "g", "r", "i", "z", "y")
-    max_val_size: int = 2**20
-    snapshot_factor: float = 1.0
 
     def __post_init__(self):
         object.__setattr__(self, "catalog_root", Path(self.catalog_root))
@@ -83,8 +74,6 @@ def dp1_config(
     val_start: float = 0.6,
     test_start: float = 0.85,
     bands: tuple[str, ...] = ("u", "g", "r", "i", "z", "y"),
-    max_val_size: int = 2**20,
-    snapshot_factor: float = 1.0,
 ) -> SurveyConfig:
     """SurveyConfig for Rubin Data Preview 1.
 
@@ -100,10 +89,6 @@ def dp1_config(
         Val/test boundary. Defaults to 0.85.
     bands : tuple of str, optional
         Survey filter bands. Defaults to all six LSST bands.
-    max_val_size : int, optional
-        Maximum validation set size. Defaults to 2**20.
-    snapshot_factor : float, optional
-        Snapshot cadence factor. Defaults to 1.0.
 
     Returns
     -------
@@ -115,8 +100,6 @@ def dp1_config(
         val_start=val_start,
         test_start=test_start,
         bands=bands,
-        max_val_size=max_val_size,
-        snapshot_factor=snapshot_factor,
     )
 
 
@@ -127,8 +110,6 @@ def dp2_config(
     val_start: float = 0.84,
     test_start: float = 0.85,
     bands: tuple[str, ...] = ("u", "g", "r", "i", "z", "y"),
-    max_val_size: int = 2**20,
-    snapshot_factor: float = 1.0,
 ) -> SurveyConfig:
     """SurveyConfig for Rubin Data Preview 2.
 
@@ -144,10 +125,6 @@ def dp2_config(
         Val/test boundary. Defaults to 0.85.
     bands : tuple of str, optional
         Survey filter bands. Defaults to all six LSST bands.
-    max_val_size : int, optional
-        Maximum validation set size. Defaults to 2**20.
-    snapshot_factor : float, optional
-        Snapshot cadence factor. Defaults to 1.0.
 
     Returns
     -------
@@ -159,6 +136,4 @@ def dp2_config(
         val_start=val_start,
         test_start=test_start,
         bands=bands,
-        max_val_size=max_val_size,
-        snapshot_factor=snapshot_factor,
     )

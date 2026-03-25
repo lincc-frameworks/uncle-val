@@ -1,6 +1,18 @@
+from __future__ import annotations
+
+import dataclasses
+import json
 from dataclasses import dataclass
+from pathlib import Path
 
 import torch
+
+
+def _config_encoder(obj):
+    """JSON serializer for types not handled by the default encoder."""
+    if isinstance(obj, Path | torch.device):
+        return str(obj)
+    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 
 @dataclass(frozen=True)
@@ -21,6 +33,31 @@ class ComputeConfig:
     def __post_init__(self):
         if self.n_workers < 1:
             raise ValueError(f"n_workers must be >= 1, got {self.n_workers}")
+
+    def to_json(self, path: str | Path) -> None:
+        """Serialize to a JSON file.
+
+        Parameters
+        ----------
+        path : str or Path
+            Destination file path.
+        """
+        Path(path).write_text(json.dumps(dataclasses.asdict(self), default=_config_encoder, indent=2))
+
+    @classmethod
+    def from_json(cls, path: str | Path) -> ComputeConfig:
+        """Deserialize from a JSON file produced by :meth:`to_json`.
+
+        Parameters
+        ----------
+        path : str or Path
+            Source file path.
+
+        Returns
+        -------
+        ComputeConfig
+        """
+        return cls(**json.loads(Path(path).read_text()))
 
 
 @dataclass(frozen=True)
@@ -74,3 +111,30 @@ class TrainingConfig:
             raise ValueError(f"lr must be > 0, got {self.lr}")
         if self.snapshot_factor <= 0.0:
             raise ValueError(f"snapshot_factor must be > 0, got {self.snapshot_factor}")
+
+    def to_json(self, path: str | Path) -> None:
+        """Serialize to a JSON file.
+
+        Parameters
+        ----------
+        path : str or Path
+            Destination file path.
+        """
+        Path(path).write_text(json.dumps(dataclasses.asdict(self), default=_config_encoder, indent=2))
+
+    @classmethod
+    def from_json(cls, path: str | Path) -> TrainingConfig:
+        """Deserialize from a JSON file produced by :meth:`to_json`.
+
+        Parameters
+        ----------
+        path : str or Path
+            Source file path.
+
+        Returns
+        -------
+        TrainingConfig
+        """
+        d = json.loads(Path(path).read_text())
+        d["compute_config"] = ComputeConfig(**d["compute_config"])
+        return cls(**d)

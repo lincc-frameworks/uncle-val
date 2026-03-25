@@ -128,7 +128,7 @@ def _read_ccd_visit_table(path, columns):
     polar_cols = ["detector_rho", "detector_cos_phi", "detector_sin_phi"]
     if columns is not None:
         columns = list(columns) + [c for c in polar_cols if c not in columns]
-    return feather.read_table(path, columns=columns, memory_map=True).to_pandas()
+    return feather.read_table(path, columns=columns, memory_map=True).to_pandas(types_mapper=pd.ArrowDtype)
 
 
 def _add_visit_info(df, *, lc_col, ccd_visits_path, ccd_visits_cols):

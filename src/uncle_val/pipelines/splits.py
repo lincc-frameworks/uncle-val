@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+import dataclasses
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -50,6 +54,33 @@ class SurveyConfig:
             )
         if self.n_src < 1:
             raise ValueError(f"n_src must be >= 1, got {self.n_src}")
+
+    def to_json(self, path: str | Path) -> None:
+        """Serialize to a JSON file.
+
+        Parameters
+        ----------
+        path : str or Path
+            Destination file path.
+        """
+        Path(path).write_text(json.dumps(dataclasses.asdict(self), default=str, indent=2))
+
+    @classmethod
+    def from_json(cls, path: str | Path) -> SurveyConfig:
+        """Deserialize from a JSON file produced by :meth:`to_json`.
+
+        Parameters
+        ----------
+        path : str or Path
+            Source file path.
+
+        Returns
+        -------
+        SurveyConfig
+        """
+        d = json.loads(Path(path).read_text())
+        d["bands"] = tuple(d["bands"])
+        return cls(**d)
 
     @property
     def train_split(self) -> tuple[float, float]:

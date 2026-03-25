@@ -98,6 +98,9 @@ def training_loop(
     intermediate_model_dir.mkdir(parents=True, exist_ok=True)
     tmp_validation_dir = output_dir / "validation"
 
+    survey_config.to_json(output_dir / "survey_config.json")
+    training_config.to_json(output_dir / "training_config.json")
+
     if training_config.start_tfboard:
         _launch_tfboard(output_root)
     summary_writer = SummaryWriter(log_dir=str(output_dir))

@@ -6,14 +6,15 @@ from nested_pandas import NestedFrame
 
 from uncle_val.datasets.rubin_dp import rubin_dp_catalog_multi_band
 from uncle_val.learning.losses import UncleLoss
-from uncle_val.learning.models import MLPModel
+from uncle_val.learning.models import BaseUncleModel
 from uncle_val.pipelines.splits import SurveyConfig
 from uncle_val.pipelines.training_config import TrainingConfig
 from uncle_val.pipelines.training_loop import training_loop
 
 
-def run_rubin_dp_mlp(
+def train_on_rubin_dp(
     *,
+    model_cls: type[BaseUncleModel],
     output_root: str | Path,
     loss_fn: UncleLoss,
     val_losses: dict[str, UncleLoss] | None = None,
@@ -24,21 +25,23 @@ def run_rubin_dp_mlp(
     survey_config: SurveyConfig,
     training_config: TrainingConfig,
 ) -> tuple[Path, list[str]]:
-    """Run the training with the MLP model on fluxes and errors
+    """Run the training on a multi-band Rubin DP catalog
 
     Parameters
     ----------
+    model_cls : type[BaseUncleModel]
+        Model class to instantiate. Ignored if ``load_model_path`` is given.
     output_root : str or Path
         Where to save the intermediate results.
     loss_fn : UncleLoss
-        Loss function to use, by default soften Χ² is used.
+        Loss function to use.
     val_losses : dict[str, UncleLoss] or None
         Extra losses to compute on validation set and record, it maps name to
         loss function. If None, an empty dictionary is used.
     load_model_path : str or Path or None
         Pre-trained model to continue training from.
     model_kwargs : dict | None
-        MLPModel kwargs.
+        Keyword arguments forwarded to ``model_cls``.
     bands : sequence of str or None
         Bands to include, subset of ``ugrizy``. Defaults to ``survey_config.bands``.
     pre_filter_partition : callable or None
@@ -55,7 +58,7 @@ def run_rubin_dp_mlp(
     Path
         Path to the output model.
     list[str]
-        List of columns to use as model inputs.
+        List of columns used as model inputs.
     """
     bands = survey_config.bands if bands is None else tuple(bands)
     catalog = rubin_dp_catalog_multi_band(
@@ -82,10 +85,7 @@ def run_rubin_dp_mlp(
     columns_no_prefix = [col.removeprefix("lc.") for col in columns]
 
     if load_model_path is None:
-        actual_model_kwargs = dict(outputs_s=False)
-        if model_kwargs is not None:
-            actual_model_kwargs.update(model_kwargs)
-        model = MLPModel(input_names=columns_no_prefix, **actual_model_kwargs)
+        model = model_cls(input_names=columns_no_prefix, **(model_kwargs or {}))
     else:
         model = torch.load(
             load_model_path, weights_only=False, map_location=training_config.compute_config.device
@@ -101,7 +101,7 @@ def run_rubin_dp_mlp(
         loss_fn=loss_fn,
         val_losses=val_losses,
         output_root=output_root,
-        model_name="mlp",
+        model_name=model_cls.__name__,
         survey_config=survey_config,
         training_config=training_config,
     )

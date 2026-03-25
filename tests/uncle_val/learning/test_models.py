@@ -17,7 +17,9 @@ from uncle_val.learning.models import (
     BaseUncleModel,
     ConstantMagErrModel,
     ConstantModel,
+    LinearMagErrModel,
     LinearModel,
+    MLPMagErrModel,
     MLPModel,
 )
 from uncle_val.learning.training import train_step
@@ -177,6 +179,25 @@ def test_constant_model_many_objects(loss_prod):
 
 
 @pytest.mark.parametrize(
+    "model",
+    [
+        ConstantMagErrModel(input_names=["x", "err"]),
+        ConstantMagErrModel(input_names=["flux", "err"]),
+        LinearMagErrModel(input_names=["x", "err"]),
+        LinearMagErrModel(input_names=["flux", "err", "expTime", "skyBg"]),
+        MLPMagErrModel(input_names=["x", "err"]),
+        MLPMagErrModel(input_names=["flux", "err"], d_middle=(8, 8), dropout=0.1),
+    ],
+)
+def test_magerr_model_forward(model):
+    """MagErr models produce output of shape (batch, 1) with positive values"""
+    batch = torch.rand(7, model.d_input).abs() + 1e-3  # positive inputs
+    out = model(batch)
+    assert out.shape == (7, 1), f"expected (7, 1), got {out.shape}"
+    assert (out > 0).all(), "u must be positive"
+
+
+@pytest.mark.parametrize(
     "loss_prod", [minus_ln_chi2_prob_loss, kl_divergence_whiten_loss, epps_pulley_whiten_loss]
 )
 @pytest.mark.long
@@ -231,3 +252,111 @@ def test_constant_magerr_model_many_objects(loss_prod):
 
     model.eval()
     assert_allclose(model.addition_centi_mag_err.item(), target_centi_mag_err, rtol=0.1)
+
+
+def _make_magerr_catalog_and_datasets(*, rng, n_obj, n_src_training, systematic_mag_err):
+    """Shared setup for MagErr model training tests.
+
+    Returns catalog, train_dataset, and test_tensor for a constant systematic
+    magnitude error of ``systematic_mag_err`` magnitudes.
+    """
+
+    def u_func(flux, flux_err):
+        mag_err = 2.5 / np.log(10) * flux_err / flux
+        new_mag_err = np.hypot(mag_err, systematic_mag_err)
+        new_flux_err = np.log(10) / 2.5 * flux * new_mag_err
+        return new_flux_err / flux_err
+
+    n_src = rng.integers(n_src_training, 150, size=n_obj)
+    catalog = fake_non_variable_lcs(n_obj=n_obj, n_src=n_src, err=None, u=u_func, rng=rng)
+
+    train_dataset = LSDBIterableDataset(
+        catalog=catalog,
+        client=None,
+        columns=["x", "err"],
+        batch_lc=2,
+        n_src=n_src_training,
+        partitions_per_chunk=12,
+        hash_range=(0.0, 0.5),
+        loop=True,
+        seed=rng.integers(1 << 63),
+    )
+    test_tensor = torch.concatenate(
+        list(
+            LSDBIterableDataset(
+                catalog=catalog,
+                client=None,
+                columns=["x", "err"],
+                batch_lc=2,
+                n_src=n_src_training,
+                partitions_per_chunk=12,
+                hash_range=(0.5, 1.0),
+                loop=False,
+                seed=rng.integers(1 << 63),
+            )
+        )
+    )
+    return train_dataset, test_tensor, u_func
+
+
+def _true_u_from_tensor(test_tensor, u_func):
+    """Compute per-observation true u from a test tensor with columns [flux, err]."""
+    flux = test_tensor[..., 0].numpy()
+    flux_err = test_tensor[..., 1].numpy()
+    return u_func(flux, flux_err)
+
+
+@pytest.mark.parametrize("loss_prod", [minus_ln_chi2_prob_loss, kl_divergence_whiten_loss])
+@pytest.mark.long
+def test_linear_magerr_model_many_objects(loss_prod):
+    """Fit LinearMagErrModel to recover a 2 centimag systematic error"""
+    torch.manual_seed(42)
+    np.random.seed(42)
+    random.seed(42)
+    torch.use_deterministic_algorithms(True)
+    rng = np.random.default_rng(42)
+
+    train_dataset, test_tensor, u_func = _make_magerr_catalog_and_datasets(
+        rng=rng, n_obj=1000, n_src_training=30, systematic_mag_err=0.02
+    )
+
+    model = LinearMagErrModel(input_names=["x", "err"])
+    model.train()
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    loss = loss_prod(lmbd=None, soft=None, kind="accum")
+
+    for _i_step, batch in zip(range(10_000), train_dataset, strict=False):
+        train_step(model=model, optimizer=optimizer, loss=loss, batch=batch)
+
+    model.eval()
+    predicted_u = model(test_tensor).detach().numpy()
+    true_u = _true_u_from_tensor(test_tensor, u_func)
+    assert_allclose(predicted_u.mean(), true_u.mean(), rtol=0.1)
+
+
+@pytest.mark.parametrize("loss_prod", [minus_ln_chi2_prob_loss, kl_divergence_whiten_loss])
+@pytest.mark.long
+def test_mlp_magerr_model_many_objects(loss_prod):
+    """Fit MLPMagErrModel to recover a 2 centimag systematic error"""
+    torch.manual_seed(42)
+    np.random.seed(42)
+    random.seed(42)
+    torch.use_deterministic_algorithms(True)
+    rng = np.random.default_rng(42)
+
+    train_dataset, test_tensor, u_func = _make_magerr_catalog_and_datasets(
+        rng=rng, n_obj=2000, n_src_training=30, systematic_mag_err=0.02
+    )
+
+    model = MLPMagErrModel(input_names=["x", "err"], d_middle=(32, 32))
+    model.train()
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    loss = loss_prod(lmbd=None, soft=None, kind="accum")
+
+    for _i_step, batch in zip(range(10_000), train_dataset, strict=False):
+        train_step(model=model, optimizer=optimizer, loss=loss, batch=batch)
+
+    model.eval()
+    predicted_u = model(test_tensor).detach().numpy()
+    true_u = _true_u_from_tensor(test_tensor, u_func)
+    assert_allclose(predicted_u.mean(), true_u.mean(), rtol=0.1)

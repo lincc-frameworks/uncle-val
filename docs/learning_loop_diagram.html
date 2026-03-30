@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Uncle Val — Learning Loop</title>
+  <style>
+    body {
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      background: #fff;
+      margin: 0;
+      padding: 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    h1 { font-size: 1.5rem; color: #1a1a2e; margin-bottom: 28px; }
+    .diagram { position: relative; width: 1400px; height: 420px; }
+    .box {
+      position: absolute;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      line-height: 1.45;
+      border-width: 2px;
+      border-style: solid;
+      padding: 8px 12px;
+      box-sizing: border-box;
+    }
+    .data  { background: #dbeafe; border-color: #3b82f6; color: #1e3a5f; }
+    .model { background: #ede9fe; border-color: #7c3aed; color: #2e1065; }
+    .opt   { background: #d1fae5; border-color: #059669; color: #064e3b; }
+    .val   { background: #fef9c3; border-color: #ca8a04; color: #3b2400; }
+  </style>
+</head>
+<body>
+<h1>Uncle Val — Training Pipeline</h1>
+<div class="diagram">
+  <svg xmlns="http://www.w3.org/2000/svg"
+       style="position:absolute;top:0;left:0;width:100%;height:100%;overflow:visible;">
+    <defs>
+      <marker id="arr" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+        <polygon points="0 0, 8 3, 0 6" fill="#555"/>
+      </marker>
+      <marker id="arr-w" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+        <polygon points="0 0, 8 3, 0 6" fill="#059669"/>
+      </marker>
+    </defs>
+
+    <!-- 1. HATS → LSDB -->
+    <line x1="135" y1="290" x2="185" y2="290"
+          stroke="#555" stroke-width="2" marker-end="url(#arr)"/>
+
+    <!-- 2. LSDB → ITER  (label below, clear of boxes) -->
+    <line x1="325" y1="290" x2="385" y2="290"
+          stroke="#555" stroke-width="2" marker-end="url(#arr)"/>
+    <text x="330" y="360" font-size="13" fill="#3a7a3a" font-style="italic">train split</text>
+
+    <!-- 3. ITER → MODEL -->
+    <line x1="560" y1="290" x2="630" y2="290"
+          stroke="#555" stroke-width="2" marker-end="url(#arr)"/>
+
+    <!-- 4. MODEL → LOSS -->
+    <line x1="790" y1="290" x2="870" y2="290"
+          stroke="#555" stroke-width="2" marker-end="url(#arr)"/>
+
+    <!-- 5. LOSS → ADAM -->
+    <line x1="1035" y1="290" x2="1255" y2="290"
+          stroke="#555" stroke-width="2" marker-end="url(#arr)"/>
+
+    <!-- 6. LSDB → VAL_DATA  (val split, curve up-right; label left of curve) -->
+    <path d="M 295,262 C 385,185 510,115 600,115"
+          stroke="#555" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+    <text x="310" y="196" font-size="13" fill="#3a7a3a" font-style="italic">val split</text>
+
+    <!-- 7. VAL_DATA → VAL_LOOP -->
+    <line x1="760" y1="115" x2="870" y2="115"
+          stroke="#555" stroke-width="2" marker-end="url(#arr)"/>
+
+    <!-- 8. VAL_LOOP → ADAM  (curve down-right; label in the open gap) -->
+    <path d="M 1060,120 C 1165,120 1332,190 1332,258"
+          stroke="#555" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+    <text x="1073" y="170" font-size="13" fill="#555">best checkpoint</text>
+    <text x="1073" y="186" font-size="13" fill="#555">+ LR schedule</text>
+
+    <!-- 9. ADAM → MODEL  (weights, dotted arc below main path) -->
+    <path d="M 1332,323 C 1332,395 710,395 710,323"
+          stroke="#059669" stroke-width="2" stroke-dasharray="6,4"
+          fill="none" marker-end="url(#arr-w)"/>
+    <text x="985" y="413" font-size="13" fill="#059669" font-style="italic">weights</text>
+
+    <!-- 10. ADAM → VAL_LOOP  (weights, dotted — arcs over the top) -->
+    <path d="M 1332,258 C 1340,25 980,25 965,75"
+          stroke="#059669" stroke-width="2" stroke-dasharray="6,4"
+          fill="none" marker-end="url(#arr-w)"/>
+    <text x="1300" y="108" font-size="13" fill="#059669" font-style="italic">weights</text>
+  </svg>
+
+  <!-- HATS  l=15 t=258 w=120 h=65 -->
+  <div class="box data" style="left:15px;top:258px;width:120px;height:65px;font-size:17px;">
+    HATS Catalog<br>on disk
+  </div>
+
+  <!-- LSDB  l=185 t=258 w=140 h=65 -->
+  <div class="box data" style="left:185px;top:258px;width:140px;height:65px;font-size:17px;">
+    LSDB<br>filter · hash split
+  </div>
+
+  <!-- ITER  l=385 t=235 w=175 h=110 -->
+  <div class="box data" style="left:385px;top:235px;width:175px;height:110px;font-size:14px;">
+    LSDBIterableDataset<br>sample n_src per LC<br>batch into tensor<br>batch_lc × n_src × feat.
+  </div>
+
+  <!-- MODEL  l=630 t=258 w=160 h=65 -->
+  <div class="box model" style="left:630px;top:258px;width:160px;height:65px;font-size:17px;">
+    UncleModel<br>predict u per source
+  </div>
+
+  <!-- LOSS  l=870 t=248 w=165 h=85 -->
+  <div class="box model" style="left:870px;top:248px;width:165px;height:85px;font-size:15px;">
+    Epps-Pulley loss<br>over whitened<br>sources in batch
+  </div>
+
+  <!-- ADAM  l=1255 t=258 w=155 h=65 -->
+  <div class="box opt" style="left:1255px;top:258px;width:155px;height:65px;font-size:17px;">
+    Adam<br>update weights
+  </div>
+
+  <!-- VAL_DATA  l=600 t=80 w=160 h=70 -->
+  <div class="box val" style="left:600px;top:80px;width:160px;height:70px;font-size:17px;">
+    Val data<br>saved to disk once
+  </div>
+
+  <!-- VAL_LOOP  l=870 t=75 w=190 h=85 -->
+  <div class="box val" style="left:870px;top:75px;width:190px;height:85px;font-size:15px;">
+    Val eval, async<br>every N steps.<br>Best checkpoint +<br>LR schedule.
+  </div>
+</div>
+</body>
+</html>

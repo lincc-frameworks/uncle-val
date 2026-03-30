@@ -14,12 +14,10 @@ from uncle_val.pipelines.training_loop import training_loop
 
 def train_on_rubin_dp(
     *,
-    model_cls: type[BaseUncleModel],
+    model: BaseUncleModel | str | Path,
     output_root: str | Path,
     loss_fn: UncleLoss,
     val_losses: dict[str, UncleLoss] | None = None,
-    load_model_path: str | Path | None = None,
-    model_kwargs: dict[str, object] | None = None,
     bands: Sequence[str] | None = None,
     pre_filter_partition: Callable[[NestedFrame], NestedFrame] | None = None,
     survey_config: SurveyConfig,
@@ -29,8 +27,9 @@ def train_on_rubin_dp(
 
     Parameters
     ----------
-    model_cls : type[BaseUncleModel]
-        Model class to instantiate. Ignored if ``load_model_path`` is given.
+    model : BaseUncleModel or str or Path
+        Model instance to train, or a path to a saved model to load and
+        continue training from.
     output_root : str or Path
         Where to save the intermediate results.
     loss_fn : UncleLoss
@@ -38,10 +37,6 @@ def train_on_rubin_dp(
     val_losses : dict[str, UncleLoss] or None
         Extra losses to compute on validation set and record, it maps name to
         loss function. If None, an empty dictionary is used.
-    load_model_path : str or Path or None
-        Pre-trained model to continue training from.
-    model_kwargs : dict | None
-        Keyword arguments forwarded to ``model_cls``.
     bands : sequence of str or None
         Bands to include, subset of ``ugrizy``. Defaults to ``survey_config.bands``.
     pre_filter_partition : callable or None
@@ -84,12 +79,8 @@ def train_on_rubin_dp(
     ] + [f"is_{band}_band" for band in bands]
     columns_no_prefix = [col.removeprefix("lc.") for col in columns]
 
-    if load_model_path is None:
-        model = model_cls(input_names=columns_no_prefix, **(model_kwargs or {}))
-    else:
-        model = torch.load(
-            load_model_path, weights_only=False, map_location=training_config.compute_config.device
-        )
+    if isinstance(model, str | Path):
+        model = torch.load(model, weights_only=False, map_location=training_config.compute_config.device)
 
     if val_losses is None:
         val_losses = {}
@@ -101,7 +92,7 @@ def train_on_rubin_dp(
         loss_fn=loss_fn,
         val_losses=val_losses,
         output_root=output_root,
-        model_name=model_cls.__name__,
+        model_name=type(model).__name__,
         survey_config=survey_config,
         training_config=training_config,
     )

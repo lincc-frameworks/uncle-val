@@ -152,7 +152,7 @@ def training_loop(
             sum_grad_norm = tensor(float("inf"), device=device)
             max_abs_grad = tensor(float("inf"), device=device)
 
-            activation_bins = np.linspace(-2, 2, 1001)
+            activation_bins = np.linspace(0.0, 3.0, 1001)
 
             def snapshot(i):
                 nonlocal \

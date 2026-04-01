@@ -36,7 +36,7 @@ def test_survey_config_roundtrip_path_object(tmp_path):
 
 def test_survey_config_bands_stay_tuple(tmp_path):
     """bands must come back as a tuple, not a list."""
-    cfg = dp1_config("/data/dp1")
+    cfg = dp1_config("/data/dp1", n_src=10)
     path = tmp_path / "survey.json"
     cfg.to_json(path)
     loaded = SurveyConfig.from_json(path)
@@ -46,7 +46,7 @@ def test_survey_config_bands_stay_tuple(tmp_path):
 
 def test_survey_config_json_is_readable(tmp_path):
     """The JSON file must be valid and catalog_root stored as a string."""
-    cfg = dp1_config("/data/catalogs")
+    cfg = dp1_config("/data/catalogs", n_src=10)
     path = tmp_path / "survey.json"
     cfg.to_json(path)
     d = json.loads(path.read_text())

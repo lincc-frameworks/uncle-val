@@ -42,7 +42,7 @@ class ActivationHistHook:
             Output tensor for the module
         """
         del module, input
-        torch_counts, _torch_bins = torch.histogram(output, self.bins)
+        torch_counts, _torch_bins = torch.histogram(output.detach().cpu(), self.bins.detach().cpu())
         self.counts += torch_counts.detach().cpu().numpy()
 
 

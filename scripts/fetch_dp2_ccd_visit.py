@@ -12,22 +12,10 @@ def parse_args(argv=None):
         "Requires LSST stack environment."
     )
     parser.add_argument(
-        "--run",
-        type=str,
-        required=True,
-        help="The run identifier for the data (e.g., '20250417_20250921').",
-    )
-    parser.add_argument(
-        "--version",
-        type=str,
-        required=True,
-        help="The version (e.g., for weekly, 'w_2025_49').",
-    )
-    parser.add_argument(
         "--collection",
         type=str,
         required=True,
-        help="The collection name (e.g., 'DM-53545').",
+        help="The full collection name (e.g., 'LSSTCam/runs/DRP/v30_0_4/DM-54249').",
     )
     parser.add_argument(
         "--config",
@@ -45,12 +33,11 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
-def get_uri(*, run, version, collection, config, **_kwargs):
+def get_uri(*, collection, config, **_kwargs):
     """Get LSST URI object for the visit_detector_table parquet file."""
     from lsst.daf.butler import Butler
 
-    collections = f"LSSTCam/runs/DRP/{run}/{version}/{collection}"
-    butler = Butler(config, collections=collections)
+    butler = Butler(config, collections=collection)
     uri = butler.getURI("visit_detector_table", dataId={"instrument": "LSSTCam"})
     return uri
 

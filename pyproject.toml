@@ -21,7 +21,7 @@ dependencies = [
     "cityhash>=0.4.9",  # provides cityhash and farmhash
     "dask[distributed]",  # version from lsdb
     "hats",  # version from lsdb
-    "lsdb>=0.8,<0.9",
+    "lsdb>=0.8,<0.10",
     "matplotlib",
     "nested-pandas",
     "numba>=0.62.1",

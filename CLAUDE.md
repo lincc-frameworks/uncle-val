@@ -86,6 +86,9 @@ DP1 HATS Catalog (LSDB/HATS on disk)
   → pipelines/plotting.py (diagnostic whitened residual plots)
 ```
 
+## Code Style
+- Use `isinstance(x, A | B)` not `isinstance(x, (A, B))` — ruff UP038 enforces this.
+
 ## Testing Notes
 - Doctests are collected from `src/` and `docs/*.rst` (configured in `pyproject.toml`).
 - Mark slow tests with `@pytest.mark.long`; these are skipped in pre-commit hooks but run in CI.

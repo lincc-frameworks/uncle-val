@@ -37,13 +37,59 @@ def _samples_in_bins(x, bins, sample_count, rng):
     return samples
 
 
-def _extract_hists(
+def _build_hist_and_samples(monochrome, *, band, mag_bins, value_bins, value_column, n_samples, rng):
+    nested_column, sub_column = value_column.split(".", maxsplit=1)
+
+    mag_idx_grid, value_idx_grid = np.indices((len(mag_bins) - 1, len(value_bins) - 1))
+
+    values_mag = monochrome[["object_mag", nested_column]].explode(nested_column)
+    hist, _mag_bins, _value_bins = np.histogram2d(
+        values_mag["object_mag"], values_mag[sub_column], bins=[mag_bins, value_bins]
+    )
+
+    flat_df = pd.DataFrame(
+        {
+            "band": band,
+            "mag_bin_idx": mag_idx_grid.flatten(),
+            "value_bin_idx": value_idx_grid.flatten(),
+            "count": hist.flatten().astype(np.int64),
+        }
+    )
+    nf = NestedFrame.from_flat(
+        flat_df,
+        name="hist",
+        base_columns=["band"],
+        nested_columns=["value_bin_idx", "count"],
+        on="mag_bin_idx",
+    ).reset_index(drop=False)
+
+    sample_idx = _samples_in_bins(
+        x=values_mag["object_mag"],
+        bins=mag_bins,
+        sample_count=n_samples,
+        rng=rng,
+    )
+    nf[sub_column] = pd.Series(
+        [np.asarray(values_mag[sub_column].iloc[idx]) for idx in sample_idx],
+        dtype=pd.ArrowDtype(pa.list_(pa.float64())),
+    )
+    nf["object_mag"] = pd.Series(
+        [np.asarray(values_mag["object_mag"].iloc[idx]) for idx in sample_idx],
+        dtype=pd.ArrowDtype(pa.list_(pa.float64())),
+    )
+    nf = nf.nest_lists([sub_column, "object_mag"], name="samples")
+
+    return nf
+
+
+def _extract_hists_and_samples(
     df,
     pixel,
     *,
     hash_range,
     z_bins,
     mag_bins,
+    add_mag_err_bins,
     bands,
     min_n_src,
     n_samples,
@@ -68,11 +114,17 @@ def _extract_hists(
             {
                 "mag_bin_idx": np.array([], dtype=int),
                 "band": np.array([], dtype=str),
-                "hist": NestedDtype(
-                    pa.struct({"z_bin_idx": pa.list_(pa.int64()), "count": pa.list_(pa.int64())})
+                "z_hist": NestedDtype(
+                    pa.struct({"value_bin_idx": pa.list_(pa.int64()), "count": pa.list_(pa.int64())})
                 ),
-                "samples": NestedDtype(
+                "z_samples": NestedDtype(
                     pa.struct({"z": pa.list_(pa.float64()), "object_mag": pa.list_(pa.float64())})
+                ),
+                "add_mag_err_hist": NestedDtype(
+                    pa.struct({"value_bin_idx": pa.list_(pa.int64()), "count": pa.list_(pa.int64())})
+                ),
+                "add_mag_err_samples": NestedDtype(
+                    pa.struct({"add_mag_err": pa.list_(pa.float64()), "object_mag": pa.list_(pa.float64())})
                 ),
             }
         )
@@ -80,27 +132,6 @@ def _extract_hists(
     if model_path is not None:
         model = torch.load(model_path, weights_only=False).to(device)
         model.eval()
-
-        # model_subcolumns = []
-        # for col in model_columns:
-        #     if col.startswith("lc."):
-        #         model_subcolumns.append(col.removeprefix("lc."))
-        #         continue
-        #     model_subcolumns.append(col)
-        #     df[f"lc.{col}"] = df[col]
-        #
-        # model_inputs = df["lc"].nest.to_flat(model_subcolumns).to_numpy(dtype=np.float32)
-        # chunked_model = torch.vmap(model, chunk_size=128)
-        # model_output = chunked_model(torch.tensor(model_inputs, device=device)).cpu().detach().numpy()
-        #
-        # uu = model_output[..., 0].flatten()
-        # err_col = "lc.corrected_err"
-        # df[err_col] = uu * df["lc.err"]
-        #
-        # if model.outputs_s:
-        #     sf = model_output[..., 1].flatten()
-        #     x_col = "lc.corrected_x"
-        #     df[x_col] = (1.0 + sf) * df["lc.x"]
 
         def apply_model(x, err, *extras):
             inputs = np.stack(np.broadcast_arrays(x, err, *extras), axis=-1, dtype=np.float32)
@@ -114,63 +145,53 @@ def _extract_hists(
             else:
                 corrected_x = x
 
-            return {"corrected_lc.x": corrected_x, "corrected_lc.err": corrected_err}
+            orig_mag_err = 2.5 / np.log(10.0) * err / x
+            corrected_mag_err = 2.5 / np.log(10.0) * corrected_err / corrected_x
+            addition_mag_err = np.sqrt(np.maximum(corrected_mag_err**2 - orig_mag_err**2, 0))
+
+            return {
+                "corrected_lc.x": corrected_x,
+                "corrected_lc.err": corrected_err,
+                "corrected_lc.add_mag_err": addition_mag_err,
+            }
 
         df["lc"] = df.reduce(apply_model, *model_columns)["corrected_lc"]
+    else:
+        df["lc.add_mag_err"] = 0.0
 
-    whiten = (
-        df.reduce(
-            _whiten_flux_err,
-            "lc.x",
-            "lc.err",
-            append_columns=True,
-        )
-        .drop(
-            columns=["lc"],
-        )
-        .reset_index(
-            drop=True,
-        )
+    whiten = df.reduce(
+        _whiten_flux_err,
+        "lc.x",
+        "lc.err",
+        append_columns=True,
+    ).reset_index(
+        drop=True,
     )
-
-    mag_idx_grid, z_idx_grid = np.indices((len(mag_bins) - 1, len(z_bins) - 1))
 
     result_nfs = []
     for band in bands:
-        monochrome = whiten.query(f"band=='{band}'")
-        z_mag = monochrome[["object_mag"]].join(monochrome["whiten"].nest.to_flat())
-        hist, _mag_bins, _z_bins = np.histogram2d(z_mag["object_mag"], z_mag["z"], bins=[mag_bins, z_bins])
-        flat_df = pd.DataFrame(
-            {
-                "band": band,
-                "mag_bin_idx": mag_idx_grid.flatten(),
-                "z_bin_idx": z_idx_grid.flatten(),
-                "count": hist.flatten().astype(np.int64),
-            }
-        )
-        nf = NestedFrame.from_flat(
-            flat_df,
-            name="hist",
-            base_columns=["band"],
-            nested_columns=["z_bin_idx", "count"],
-            on="mag_bin_idx",
-        ).reset_index(drop=False)
-        sample_idx = _samples_in_bins(
-            x=z_mag["object_mag"],
-            bins=mag_bins,
-            sample_count=n_samples,
+        monochrome = whiten.query(f"band == {band!r}")
+        z_nf = _build_hist_and_samples(
+            monochrome,
+            band=band,
+            mag_bins=mag_bins,
+            value_bins=z_bins,
+            value_column="whiten.z",
+            n_samples=n_samples,
             rng=rng,
         )
-        nf["z"] = pd.Series(
-            [np.asarray(z_mag["z"].iloc[idx]) for idx in sample_idx],
-            dtype=pd.ArrowDtype(pa.list_(pa.float64())),
+        addmagerr_nf = _build_hist_and_samples(
+            monochrome,
+            band=band,
+            mag_bins=mag_bins,
+            value_bins=add_mag_err_bins,
+            value_column="lc.add_mag_err",
+            n_samples=n_samples,
+            rng=rng,
         )
-        nf["object_mag"] = pd.Series(
-            [np.asarray(z_mag["object_mag"].iloc[idx]) for idx in sample_idx],
-            dtype=pd.ArrowDtype(pa.list_(pa.float64())),
-        )
-        nf = nf.nest_lists(["z", "object_mag"], name="samples")
-
+        nf = z_nf.rename(columns={"hist": "z_hist", "samples": "z_samples"})
+        nf["add_mag_err_hist"] = addmagerr_nf["hist"]
+        nf["add_mag_err_samples"] = addmagerr_nf["samples"]
         result_nfs.append(nf)
     return pd.concat(result_nfs, ignore_index=True)
 
@@ -188,6 +209,7 @@ def _get_hists(
     device: torch.device | str = "cpu",
     mag_bins: np.ndarray,
     z_bins: np.ndarray,
+    add_mag_err_bins: np.ndarray,
     n_samples: int,
 ):
     catalog = rubin_dp_catalog_multi_band(
@@ -200,11 +222,12 @@ def _get_hists(
     )
 
     hists = catalog.map_partitions(
-        _extract_hists,
+        _extract_hists_and_samples,
         include_pixel=True,
         hash_range=hash_range,
         z_bins=z_bins,
         mag_bins=mag_bins,
+        add_mag_err_bins=add_mag_err_bins,
         bands=bands,
         min_n_src=min_n_src,
         n_samples=n_samples,
@@ -224,28 +247,21 @@ def _get_hists(
     return hists_df
 
 
-def _aggregate_hists(df, band, *, z_centers: np.ndarray, z_width: float):
+def _aggregate_hists(df, band, *, hist_column: str, value_centers: np.ndarray, value_width: float):
     df = (
-        df.drop(columns=["samples"])
-        .query(
-            f"band == {band!r}",
-        )
-        .explode("hist")
-        .groupby(
-            ["z_bin_idx"],
-        )["count"]
+        df.query(f"band == {band!r}")
+        .explode(hist_column)
+        .groupby(["value_bin_idx"])["count"]
         .sum()
         .sort_index()
-        .reset_index(
-            drop=False,
-        )
+        .reset_index(drop=False)
     )
-    df["z_centers"] = z_centers
+    df["value_centers"] = value_centers
     df["prob"] = df["count"] / df["count"].sum()
-    df["prob_dens"] = df["prob"] / z_width
+    df["prob_dens"] = df["prob"] / value_width
 
-    mean = np.sum(df["prob"] * df["z_centers"])
-    std = np.sqrt(np.sum(df["prob"] * (df["z_centers"] - mean) ** 2))
+    mean = np.sum(df["prob"] * df["value_centers"])
+    std = np.sqrt(np.sum(df["prob"] * (df["value_centers"] - mean) ** 2))
 
     return df, mean, std
 
@@ -253,14 +269,16 @@ def _aggregate_hists(df, band, *, z_centers: np.ndarray, z_width: float):
 def _plot_hist(
     df, ax, band, *, if_model: bool, z_centers: np.ndarray, z_width: float, z_bins: np.ndarray, mag_bin
 ):
-    df, mean, std = _aggregate_hists(df, band, z_centers=z_centers, z_width=z_width)
+    df, mean, std = _aggregate_hists(
+        df, band, hist_column="z_hist", value_centers=z_centers, value_width=z_width
+    )
 
     title = f"Whiten Signal, {band}-band, μ={mean:.4f} σ={std:.4f}"
     if mag_bin is not None:
         title = f"{title}; for mag=[{mag_bin[0]}; {mag_bin[1]}]"
     ax.set_title(title)
     label = "corrected data" if if_model is None else "data"
-    ax.bar(x=df["z_centers"], height=df["prob_dens"], width=z_width, label=label, color="blue", alpha=0.2)
+    ax.bar(x=df["value_centers"], height=df["prob_dens"], width=z_width, label=label, color="blue", alpha=0.2)
     ax.plot(z_bins, norm(loc=mean, scale=std).pdf(z_bins), label="Normal PDF fit", color="blue", alpha=1.0)
     ax.plot(
         z_bins, norm(loc=0, scale=1).pdf(z_bins), label="Standard normal PDF", ls="--", color="red", alpha=0.6
@@ -283,7 +301,11 @@ def _plot_magn_vs_uu(
     uu = []
     for mag_bin_idx in range(len(mag_bins) - 1):
         _df, mean, std = _aggregate_hists(
-            df.query(f"mag_bin_idx == {mag_bin_idx}"), band, z_centers=z_centers, z_width=z_width
+            df.query(f"mag_bin_idx == {mag_bin_idx}"),
+            band,
+            hist_column="z_hist",
+            value_centers=z_centers,
+            value_width=z_width,
         )
         means.append(mean)
         uu.append(std)
@@ -292,8 +314,8 @@ def _plot_magn_vs_uu(
 
     mag_, means, uu = mag_centers[uu > 0], means[uu > 0], uu[uu > 0]
 
-    samples_mag = df.query(f"band == {band!r}")["samples.object_mag"]
-    samples_z = df.query(f"band == {band!r}")["samples.z"]
+    samples_mag = df.query(f"band == {band!r}")["z_samples.object_mag"]
+    samples_z = df.query(f"band == {band!r}")["z_samples.z"]
 
     ax.set_title(f"Whiten Sources, {band}-band")
     ax.scatter(samples_mag, samples_z, color="grey", marker=".", s=1, alpha=0.5, label="Samples")
@@ -303,6 +325,42 @@ def _plot_magn_vs_uu(
     ax.set_xlabel("Object PSF Magnitude")
     ax.set_ylabel("Whiten Signal")
     ax.set_ylim([z_bins[0], z_bins[-1]])
+    ax.set_xlim([mag_bins[0], mag_bins[-1]])
+    ax.legend()
+
+
+def _plot_magn_vs_add_mag_err(
+    df,
+    ax,
+    band,
+    *,
+    mag_bins: np.ndarray,
+    add_mag_err_centers: np.ndarray,
+    add_mag_err_width: float,
+    add_mag_err_bins: np.ndarray,
+    mag_centers: np.ndarray,
+):
+    means = []
+    for mag_bin_idx in range(len(mag_bins) - 1):
+        _df, mean, _std = _aggregate_hists(
+            df.query(f"mag_bin_idx == {mag_bin_idx}"),
+            band,
+            hist_column="add_mag_err_hist",
+            value_centers=add_mag_err_centers,
+            value_width=add_mag_err_width,
+        )
+        means.append(mean)
+    means = np.array(means)
+
+    samples_mag = df.query(f"band == {band!r}")["add_mag_err_samples.object_mag"]
+    samples_add_mag_err = df.query(f"band == {band!r}")["add_mag_err_samples.add_mag_err"]
+
+    ax.set_title(f"Addition Mag Err, {band}-band")
+    ax.scatter(samples_mag, samples_add_mag_err, color="grey", marker=".", s=1, alpha=0.5, label="Samples")
+    ax.plot(mag_centers, means, color="blue", label="mean")
+    ax.set_xlabel("Object PSF Magnitude")
+    ax.set_ylabel("Addition Mag Err")
+    ax.set_ylim([add_mag_err_bins[0], add_mag_err_bins[-1]])
     ax.set_xlim([mag_bins[0], mag_bins[-1]])
     ax.legend()
 
@@ -381,6 +439,10 @@ def make_plots(
     mag_bins = np.arange(13, 27, 0.5)
     mag_centers = 0.5 * (mag_bins[1:] + mag_bins[:-1])
 
+    add_mag_err_bins = np.r_[0:0.1:101j]
+    add_mag_err_width = add_mag_err_bins[1] - add_mag_err_bins[0]
+    add_mag_err_centers = 0.5 * (add_mag_err_bins[1:] + add_mag_err_bins[:-1])
+
     hists = _get_hists(
         rubin_dp_root,
         hash_range=hash_range,
@@ -393,6 +455,7 @@ def make_plots(
         device=compute_config.device,
         mag_bins=mag_bins,
         z_bins=z_bins,
+        add_mag_err_bins=add_mag_err_bins,
         n_samples=n_samples,
     )
 
@@ -457,3 +520,23 @@ def make_plots(
         plt.show()
     else:
         fig.savefig(output_dir / f"uu_vs_mag{filename_suffix}.pdf")
+
+    if if_model:
+        fig, axes = plt.subplots(3, 2, figsize=(12, 12))
+        axes = axes.flatten()
+        for i, band in enumerate(bands):
+            _plot_magn_vs_add_mag_err(
+                hists,
+                axes[i],
+                band,
+                mag_bins=mag_bins,
+                add_mag_err_centers=add_mag_err_centers,
+                add_mag_err_width=add_mag_err_width,
+                add_mag_err_bins=add_mag_err_bins,
+                mag_centers=mag_centers,
+            )
+        plt.tight_layout()
+        if output_dir is None:
+            plt.show()
+        else:
+            fig.savefig(output_dir / f"add_mag_err_vs_mag{filename_suffix}.pdf")

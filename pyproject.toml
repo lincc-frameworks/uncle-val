@@ -28,7 +28,7 @@ dependencies = [
     "numpy>=2",
     "onnxscript>=0.5.3",
     "scipy>=1",
-    "setuptools<70",  # provides pkg_resources, required by tensorboard but missing from its dependencies
+    "setuptools<83",  # provides pkg_resources, required by tensorboard but missing from its dependencies
     "tensorboard>=2",
     "torch>=2.8.0,<3",
     "shap",

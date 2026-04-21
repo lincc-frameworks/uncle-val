@@ -30,7 +30,7 @@ class SurveyConfig:
 
     Examples
     --------
-    >>> cfg = dp1_config("/path/to/dp1")
+    >>> cfg = dp1_config("/path/to/dp1", n_src=10)
     >>> cfg.train_split
     (0.0, 0.6)
     >>> cfg.val_split

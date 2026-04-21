@@ -100,7 +100,10 @@ def run_rubin_dp_feature_importance(
     model.eval()
 
     with Client(n_workers=compute_config.n_workers, memory_limit="8GB", threads_per_worker=1) as client:
-        print(f"Dask Dashboard Link: {client.dashboard_link}")
+        try:
+            print(f"Dask Dashboard Link: {client.dashboard_link}")
+        except AttributeError as e:
+            print(f"Cannot get Dask Dashboard Link: {e}")
         obs_iter = _flat_obs_generator(
             catalog,
             columns_no_prefix=columns_no_prefix,

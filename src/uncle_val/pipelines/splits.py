@@ -30,7 +30,7 @@ class SurveyConfig:
 
     Examples
     --------
-    >>> cfg = dp1_config("/path/to/dp1")
+    >>> cfg = dp1_config("/path/to/dp1", n_src=10)
     >>> cfg.train_split
     (0.0, 0.6)
     >>> cfg.val_split
@@ -101,7 +101,7 @@ class SurveyConfig:
 def dp1_config(
     catalog_root: str | Path,
     *,
-    n_src: int = 10,
+    n_src: int,
     val_start: float = 0.6,
     test_start: float = 0.85,
     bands: tuple[str, ...] = ("u", "g", "r", "i", "z", "y"),
@@ -112,8 +112,8 @@ def dp1_config(
     ----------
     catalog_root : str or Path
         Root directory of the DP1 HATS catalogs.
-    n_src : int, optional
-        Observations to subsample per light curve. Defaults to 10.
+    n_src : int
+        Observations to subsample per light curve.
     val_start : float, optional
         Train/val boundary. Defaults to 0.6.
     test_start : float, optional
@@ -137,7 +137,7 @@ def dp1_config(
 def dp2_config(
     catalog_root: str | Path,
     *,
-    n_src: int = 50,
+    n_src: int,
     val_start: float = 0.84,
     test_start: float = 0.85,
     bands: tuple[str, ...] = ("u", "g", "r", "i", "z", "y"),
@@ -148,10 +148,10 @@ def dp2_config(
     ----------
     catalog_root : str or Path
         Root directory of the DP2 HATS catalogs.
-    n_src : int, optional
-        Observations to subsample per light curve. Defaults to 50.
+    n_src : int
+        Observations to subsample per light curve.
     val_start : float, optional
-        Train/val boundary. Defaults to 0.84.
+        Train/val boundary. Defaults to 0.7.
     test_start : float, optional
         Val/test boundary. Defaults to 0.85.
     bands : tuple of str, optional

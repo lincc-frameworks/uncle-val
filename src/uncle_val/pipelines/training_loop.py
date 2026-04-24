@@ -5,7 +5,7 @@ from pathlib import Path
 import lsdb
 import numpy as np
 import torch
-from dask.distributed import Client, Future
+from dask.distributed import Future
 from torch import tensor
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -22,6 +22,7 @@ from uncle_val.pipelines.splits import SurveyConfig
 from uncle_val.pipelines.training_config import TrainingConfig
 from uncle_val.pipelines.utils import _launch_tfboard
 from uncle_val.pipelines.validation_set_utils import get_val_stats
+from uncle_val.utils.dask_client import Client
 
 
 def get_val_workers(client: Client, device: torch.device) -> list[object] | None:
@@ -109,13 +110,8 @@ def training_loop(
     scheduler = ReduceLROnPlateau(optimizer, factor=10**-0.5, patience=16, cooldown=32, eps=1e-10)
     model = model.to(device)
 
-    with Client(
-        n_workers=training_config.compute_config.n_workers, memory_limit="8GB", threads_per_worker=1
-    ) as client:
-        try:
-            print(f"Dask Dashboard Link: {client.dashboard_link}")
-        except KeyError as e:
-            print(f"Cannot get Dask Dashboard Link: {e}")
+    with Client(n_workers=training_config.compute_config.n_workers) as client:
+        print(f"Dask Dashboard Link: {client.dashboard_link}")
 
         validation_dataset_lsdb = LSDBIterableDataset(
             catalog=catalog,

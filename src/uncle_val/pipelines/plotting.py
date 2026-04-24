@@ -1,5 +1,4 @@
 from collections.abc import Sequence
-from contextlib import suppress
 from functools import partial
 from pathlib import Path
 
@@ -9,7 +8,6 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import torch
-from dask.distributed import Client
 from nested_pandas import NestedDtype, NestedFrame
 from scipy.stats import norm
 
@@ -17,6 +15,7 @@ from uncle_val.datasets.rubin_dp import rubin_dp_catalog_multi_band
 from uncle_val.learning.models import BaseUncleModel
 from uncle_val.pipelines.splits import SurveyConfig
 from uncle_val.pipelines.training_config import ComputeConfig
+from uncle_val.utils.dask_client import Client
 from uncle_val.utils.hashing import uniform_hash
 from uncle_val.whitening import whiten_data
 
@@ -238,16 +237,9 @@ def _get_hists(
         device=torch.device(device),
     )
 
-    client = Client(n_workers=n_workers, threads_per_worker=1, memory_limit="64GB")
-    try:
-        try:
-            print(f"Dask Dashboard Link: {client.dashboard_link}")
-        except KeyError as e:
-            print(f"Cannot get Dask Dashboard Link: {e}")
+    with Client(n_workers=n_workers, memory_limit="64GB") as client:
+        print(f"Dask Dashboard Link: {client.dashboard_link}")
         hists_df = hists.compute()
-    finally:
-        with suppress(TimeoutError):
-            client.close(timeout=60)
 
     return hists_df
 

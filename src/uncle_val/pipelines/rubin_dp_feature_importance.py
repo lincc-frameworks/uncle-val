@@ -4,7 +4,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from dask.distributed import Client
 from nested_pandas import NestedFrame
 
 from uncle_val.datasets.rubin_dp import rubin_dp_catalog_multi_band
@@ -12,6 +11,7 @@ from uncle_val.learning.feature_importance import compute_shap_values, plot_shap
 from uncle_val.learning.lsdb_dataset import lsdb_nested_series_data_generator
 from uncle_val.pipelines.splits import SurveyConfig
 from uncle_val.pipelines.training_config import ComputeConfig
+from uncle_val.utils.dask_client import Client
 
 
 def _flat_obs_generator(
@@ -99,11 +99,8 @@ def run_rubin_dp_feature_importance(
     model = torch.load(model_path, weights_only=False, map_location=device)
     model.eval()
 
-    with Client(n_workers=compute_config.n_workers, memory_limit="8GB", threads_per_worker=1) as client:
-        try:
-            print(f"Dask Dashboard Link: {client.dashboard_link}")
-        except AttributeError as e:
-            print(f"Cannot get Dask Dashboard Link: {e}")
+    with Client(n_workers=compute_config.n_workers) as client:
+        print(f"Dask Dashboard Link: {client.dashboard_link}")
         obs_iter = _flat_obs_generator(
             catalog,
             columns_no_prefix=columns_no_prefix,

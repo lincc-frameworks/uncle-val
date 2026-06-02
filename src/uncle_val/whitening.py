@@ -1,8 +1,5 @@
-import warnings
-
 import numpy
 from numba.extending import register_jitable
-from numba.core.errors import NumbaPerformanceWarning
 
 
 @register_jitable

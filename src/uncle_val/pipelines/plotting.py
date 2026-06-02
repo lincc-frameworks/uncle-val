@@ -211,6 +211,7 @@ def _get_hists(
     z_bins: np.ndarray,
     add_mag_err_bins: np.ndarray,
     n_samples: int,
+    subsample_partitions: float | None = None,
 ):
     catalog = rubin_dp_catalog_multi_band(
         rubin_dp_root,
@@ -220,6 +221,11 @@ def _get_hists(
         phot="PSF",
         mode="forced",
     )
+    if subsample_partitions is not None:
+        n_partitions = max(1, int(round(catalog.npartitions * subsample_partitions)))
+        rng = np.random.default_rng(0)
+        partitions = rng.choice(catalog.npartitions, n_partitions, replace=True)
+        catalog = catalog.partitions[partitions]
 
     hists = catalog.map_partitions(
         _extract_hists_and_samples,
@@ -374,6 +380,7 @@ def make_plots(
     object_mags: Sequence[float] | float = (),
     output_dir: str | Path | None = None,
     compute_config: ComputeConfig,
+    subsample_partitions: float | None = None,
 ):
     """Plot whiten signal for a Rubin DP catalog, optionally corrected with a model
 
@@ -454,6 +461,7 @@ def make_plots(
         z_bins=z_bins,
         add_mag_err_bins=add_mag_err_bins,
         n_samples=n_samples,
+        subsample_partitions=subsample_partitions,
     )
 
     fig, axes = plt.subplots(3, 2, figsize=(12, 12))

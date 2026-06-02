@@ -410,6 +410,8 @@ def make_plots(
          show them.
     compute_config : ComputeConfig
         Compute/infrastructure parameters; ``n_workers`` and ``device`` are used.
+    subsample_partitions : float | None
+        Random fraction of partitions to take. At least one partition will be used.
     """
     _split_map = {
         "train": survey_config.train_split,

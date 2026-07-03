@@ -283,7 +283,7 @@ def training_loop(
                 shap_values,
                 feature_data,
                 input_names=model.input_names,
-                output_path=output_dir / "feature_importance.png",
+                output_path=output_dir / "feature_importance.pdf",
             )
             summary_writer.add_figure("Feature importance", fig)
 

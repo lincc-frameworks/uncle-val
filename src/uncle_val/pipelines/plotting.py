@@ -483,6 +483,7 @@ def make_plots(
     if output_dir is None:
         plt.show()
     else:
+        output_dir.mkdir(parents=True, exist_ok=True)
         fig.savefig(output_dir / f"hists_all_mags{filename_suffix}.pdf")
 
     for obj_mag in object_mags:
@@ -507,6 +508,7 @@ def make_plots(
         if output_dir is None:
             plt.show()
         else:
+            output_dir.mkdir(parents=True, exist_ok=True)
             fig.savefig(output_dir / f"hists_{obj_mag:.1f}mag{filename_suffix}.pdf")
 
     fig, axes = plt.subplots(3, 2, figsize=(12, 12))
@@ -526,6 +528,7 @@ def make_plots(
     if output_dir is None:
         plt.show()
     else:
+        output_dir.mkdir(parents=True, exist_ok=True)
         fig.savefig(output_dir / f"uu_vs_mag{filename_suffix}.pdf")
 
     if if_model:
@@ -546,4 +549,5 @@ def make_plots(
         if output_dir is None:
             plt.show()
         else:
+            output_dir.mkdir(parents=True, exist_ok=True)
             fig.savefig(output_dir / f"add_mag_err_vs_mag{filename_suffix}.pdf")

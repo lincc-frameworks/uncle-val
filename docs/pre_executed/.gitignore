@@ -4,3 +4,5 @@
 
 # Tenserboard output
 runs/*
+# Plots
+plots/*

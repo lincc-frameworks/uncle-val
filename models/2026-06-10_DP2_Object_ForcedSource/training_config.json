@@ -1,0 +1,14 @@
+{
+  "compute_config": {
+    "n_workers": 16,
+    "device": "cuda:1"
+  },
+  "n_lcs": 300000000,
+  "train_batch_size": 512,
+  "val_batch_size": 16384,
+  "lr": 0.0001,
+  "max_val_size": 131072,
+  "snapshot_factor": 2.0,
+  "start_tfboard": true,
+  "run_feature_importance": false
+}

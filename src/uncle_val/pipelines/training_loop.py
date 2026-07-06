@@ -1,5 +1,4 @@
 import shutil
-from datetime import datetime
 from pathlib import Path
 
 import lsdb
@@ -54,7 +53,7 @@ def training_loop(
     model: BaseUncleModel,
     loss_fn: UncleLoss,
     val_losses: dict[str, UncleLoss],
-    output_root: str | Path,
+    output_dir: str | Path,
     model_name: str,
     survey_config: SurveyConfig,
     training_config: TrainingConfig,
@@ -74,8 +73,11 @@ def training_loop(
     val_losses : dict[str, UncleLoss]
         Extra losses to compute on validation set and record, it maps name to
         loss function.
-    output_root : str or Path
-        Where to save the intermediate results.
+    output_dir : str or Path
+        Run directory to save all the outputs to: model checkpoints, configs,
+        and TensorBoard logs. Its last component is the TensorBoard run name;
+        if requested, TensorBoard is launched on the parent directory, so
+        sibling runs are shown together.
     model_name : str
         Name of the model to use in the output Torch filename.
     survey_config : SurveyConfig
@@ -93,8 +95,7 @@ def training_loop(
 
     device = torch.device(training_config.compute_config.device)
 
-    output_root = Path(output_root)
-    output_dir = Path(output_root) / datetime.now().strftime("%Y-%m-%d_%H-%M")
+    output_dir = Path(output_dir)
     intermediate_model_dir = output_dir / "models"
     intermediate_model_dir.mkdir(parents=True, exist_ok=True)
     tmp_validation_dir = output_dir / "validation"
@@ -103,7 +104,7 @@ def training_loop(
     training_config.to_json(output_dir / "training_config.json")
 
     if training_config.start_tfboard:
-        _launch_tfboard(output_root)
+        _launch_tfboard(output_dir.parent)
     summary_writer = SummaryWriter(log_dir=str(output_dir))
 
     optimizer = Adam(model.parameters(), lr=training_config.lr)
@@ -294,5 +295,9 @@ def training_loop(
         raise RuntimeError("Model hasn't trained yet?")
     model_path = output_dir / f"{model_name}.pt"
     shutil.copy(best_model_path, model_path)
+
+    best_model = torch.load(model_path, weights_only=False, map_location="cpu")
+    best_model.eval()
+    best_model.save_onnx(model_path.with_suffix(".onnx"))
 
     return model_path

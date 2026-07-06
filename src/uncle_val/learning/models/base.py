@@ -110,6 +110,12 @@ class BaseUncleModel(torch.nn.Module):
 
     def norm_inputs(self, inputs: torch.Tensor) -> torch.Tensor:
         """Normalizes batch"""
+        # The column loop below selects the first d_input columns, so a wider
+        # batch would otherwise be silently truncated.
+        if inputs.shape[-1] != self.d_input:
+            raise ValueError(
+                f"Expected {self.d_input} input features {self.input_names}, got {inputs.shape[-1]}"
+            )
         # In-place per-column assignment traces to a fixed-batch-size scatter under
         # torch.export, so rebuild the tensor via cat instead.
         columns = [

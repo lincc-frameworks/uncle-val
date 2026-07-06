@@ -135,6 +135,19 @@ def test_model(model):
     _ = model(torch.randn(model.d_input))
 
 
+def test_model_rejects_wrong_feature_count():
+    """A batch whose width doesn't match input_names must raise, not be silently truncated"""
+    model = MLPModel(input_names=["x", "err", "skyBg"], outputs_s=False, d_middle=(4,))
+    with pytest.raises(ValueError, match="3 input features"):
+        model(torch.rand(2, 5, 4) + 1.0)
+    with pytest.raises(ValueError, match="3 input features"):
+        model(torch.rand(2, 5, 2) + 1.0)
+
+    magerr_model = ConstantMagErrModel(input_names=["x", "err"])
+    with pytest.raises(ValueError, match="2 input features"):
+        magerr_model(torch.rand(2, 5, 3) + 1.0)
+
+
 def test_psf_flux_normalizer():
     """psfFlux input (science forced flux for img="diff") is normalized as a flux"""
     model = LinearModel(input_names=["x", "err", "psfFlux"], outputs_s=False)

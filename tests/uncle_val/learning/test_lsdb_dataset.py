@@ -6,6 +6,7 @@ import pytest
 import torch
 from dask.distributed import Client
 from numpy.testing import assert_array_equal
+
 from uncle_val.datasets.fake import fake_non_variable_lcs
 from uncle_val.learning.lsdb_dataset import (
     LSDBIterableDataset,

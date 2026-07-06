@@ -1,5 +1,6 @@
 import numpy as np
 from numpy.testing import assert_allclose
+
 from uncle_val.datasets import fake_non_variable_lcs
 from uncle_val.whitening import whiten_data
 

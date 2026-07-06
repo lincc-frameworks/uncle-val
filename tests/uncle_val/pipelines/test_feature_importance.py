@@ -4,6 +4,7 @@ import pytest
 import torch
 from matplotlib.figure import Figure
 from torch.utils.data import DataLoader
+
 from uncle_val.learning.feature_importance import _FlatWrapper, compute_shap_values, plot_shap_summary
 from uncle_val.learning.models import LinearModel
 

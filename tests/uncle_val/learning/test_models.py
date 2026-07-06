@@ -5,6 +5,7 @@ import pytest
 import torch
 import torch.optim
 from numpy.testing import assert_allclose
+
 from uncle_val.datasets.fake import fake_non_variable_lcs
 from uncle_val.learning.losses import (
     UncleLoss,

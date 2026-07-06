@@ -171,9 +171,15 @@ def detect_autocorrelation(
     if n < 2:
         return False
 
-    median_flux = np.median(flux)
+    flux_amplitude = np.ptp(flux)
+    if flux_amplitude == 0.0:
+        return False
 
-    if np.ptp(flux) / median_flux <= min_median_deviation:
+    median_flux = np.median(flux)
+    abs_median_flux = np.abs(median_flux)
+    if abs_median_flux == 0.0:
+        return False
+    if abs_median_flux > 1e-30 and flux_amplitude / abs_median_flux <= min_median_deviation:
         return False
 
     numerator = np.sum((flux[:-1] - median_flux) * (flux[1:] - median_flux))

@@ -296,4 +296,8 @@ def training_loop(
     model_path = output_dir / f"{model_name}.pt"
     shutil.copy(best_model_path, model_path)
 
+    best_model = torch.load(model_path, weights_only=False, map_location="cpu")
+    best_model.eval()
+    best_model.save_onnx(model_path.with_suffix(".onnx"))
+
     return model_path

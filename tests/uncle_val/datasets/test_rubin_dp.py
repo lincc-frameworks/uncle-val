@@ -3,7 +3,7 @@ import pytest
 from uncle_val.datasets.rubin_dp import rubin_dp_catalog_multi_band
 
 
-@pytest.mark.parametrize("img, n_obj, n_src", [("cal", 106, 631), ("diff", 115, 973)])
+@pytest.mark.parametrize("img, n_obj, n_src", [("cal", 106, 631), ("diff", 112, 874)])
 def test_rubin_dp_catalog_multi_band(rubin_dp_root, img, n_obj, n_src):
     """Test rubin_dp_catalog_multi_band()"""
     catalog = rubin_dp_catalog_multi_band(

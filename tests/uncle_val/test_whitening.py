@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 import torch
 from numpy.testing import assert_allclose
+
 from uncle_val.whitening import whiten_data, whitening_operator
 
 

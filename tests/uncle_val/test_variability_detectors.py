@@ -1,4 +1,5 @@
 import numpy as np
+
 from uncle_val.variability_detectors import get_combined_variability_detector
 
 

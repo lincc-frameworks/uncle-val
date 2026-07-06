@@ -15,7 +15,7 @@ from uncle_val.pipelines.training_loop import training_loop
 def train_on_rubin_dp(
     *,
     model: BaseUncleModel | str | Path,
-    output_root: str | Path,
+    output_dir: str | Path,
     loss_fn: UncleLoss,
     val_losses: dict[str, UncleLoss] | None = None,
     bands: Sequence[str] | None = None,
@@ -30,8 +30,9 @@ def train_on_rubin_dp(
     model : BaseUncleModel or str or Path
         Model instance to train, or a path to a saved model to load and
         continue training from.
-    output_root : str or Path
-        Where to save the intermediate results.
+    output_dir : str or Path
+        Run directory to save all the outputs to, see
+        :func:`~uncle_val.pipelines.training_loop.training_loop` for details.
     loss_fn : UncleLoss
         Loss function to use.
     val_losses : dict[str, UncleLoss] or None
@@ -91,7 +92,7 @@ def train_on_rubin_dp(
         model=model,
         loss_fn=loss_fn,
         val_losses=val_losses,
-        output_root=output_root,
+        output_dir=output_dir,
         model_name=type(model).__name__,
         survey_config=survey_config,
         training_config=training_config,

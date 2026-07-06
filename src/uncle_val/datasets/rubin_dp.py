@@ -230,8 +230,14 @@ def _open_catalog(
     match img:
         case "cal":
             phot_col_prefix = "psf"
+            extra_source_cols = []
+            extra_flag_cols = []
         case "diff":
             phot_col_prefix = "psfDiff"
+            # Science forced flux as an extra feature, so the model can
+            # compare direct and difference photometry
+            extra_source_cols = ["psfFlux"]
+            extra_flag_cols = ["psfFlux_flag"]
         case _:
             raise NotImplementedError(f"img '{img}' is not supported")
 
@@ -251,7 +257,7 @@ def _open_catalog(
         "pixelFlags_saturated",
         "pixelFlags_cr",
         "pixelFlags_bad",
-    ]
+    ] + extra_flag_cols
     visit_cols = ["visit", "detector"] if read_visit_cols else []
 
     catalog = lsdb.open_catalog(
@@ -263,6 +269,7 @@ def _open_catalog(
             f"{source_col}.{flux_err_col}",
             f"{source_col}.{flux_flag_col}",
         ]
+        + [f"{source_col}.{col}" for col in extra_source_cols]
         + [f"{source_col}.{flag_col}" for flag_col in other_flag_cols]
         + obj_mag_cols
         + obj_extendedness_cols

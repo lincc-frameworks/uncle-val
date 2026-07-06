@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from uncle_val.pipelines.splits import SurveyConfig, dp1_config
 
 
@@ -12,12 +14,28 @@ def test_survey_config_roundtrip(tmp_path):
         test_start=0.85,
         n_src=10,
         bands=("g", "r", "i"),
+        obj="science",
+        img="diff",
+        phot="PSF",
+        mode="forced",
     )
     path = tmp_path / "survey.json"
     cfg.to_json(path)
     assert path.exists()
     loaded = SurveyConfig.from_json(path)
     assert loaded == cfg
+    assert loaded.img == "diff"
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [("obj", "galaxy"), ("img", "coadd"), ("phot", "aperture"), ("mode", "free")],
+)
+def test_survey_config_invalid_catalog_choice(field, value):
+    """Invalid obj/img/phot/mode values must be rejected."""
+    kwargs = {"catalog_root": "/data/dp1", "val_start": 0.6, "test_start": 0.85, "n_src": 10, field: value}
+    with pytest.raises(ValueError, match=field):
+        SurveyConfig(**kwargs)
 
 
 def test_survey_config_roundtrip_path_object(tmp_path):

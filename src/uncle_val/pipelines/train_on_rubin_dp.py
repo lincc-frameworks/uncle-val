@@ -60,10 +60,10 @@ def train_on_rubin_dp(
     catalog = rubin_dp_catalog_multi_band(
         root=survey_config.catalog_root,
         bands=bands,
-        obj="science",
-        img="cal",
-        phot="PSF",
-        mode="forced",
+        obj=survey_config.obj,
+        img=survey_config.img,
+        phot=survey_config.phot,
+        mode=survey_config.mode,
         pre_filter_partition=pre_filter_partition,
     ).map_partitions(lambda df: df.drop(columns=["band", "object_mag", "coord_ra", "coord_dec"]))
 
@@ -78,6 +78,10 @@ def train_on_rubin_dp(
         "lc.detector_cos_phi",
         "lc.detector_sin_phi",
     ] + [f"is_{band}_band" for band in bands]
+    if survey_config.img == "diff":
+        # Science forced flux, so the model sees how direct and difference
+        # photometry differ
+        columns.append("lc.psfFlux")
     columns_no_prefix = [col.removeprefix("lc.") for col in columns]
 
     if isinstance(model, str | Path):

@@ -89,10 +89,10 @@ def run_rubin_dp_feature_importance(
     catalog = rubin_dp_catalog_multi_band(
         root=survey_config.catalog_root,
         bands=bands,
-        obj="science",
-        img="cal",
-        phot="PSF",
-        mode="forced",
+        obj=survey_config.obj,
+        img=survey_config.img,
+        phot=survey_config.phot,
+        mode=survey_config.mode,
         pre_filter_partition=pre_filter_partition,
     ).map_partitions(lambda df: df.drop(columns=["band", "object_mag", "coord_ra", "coord_dec"]))
 

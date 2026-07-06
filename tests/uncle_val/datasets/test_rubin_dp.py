@@ -3,8 +3,8 @@ import pytest
 from uncle_val.datasets.rubin_dp import rubin_dp_catalog_multi_band
 
 
-@pytest.mark.parametrize("img, n_obj", [("cal", 106), ("diff", 115)])
-def test_rubin_dp_catalog_multi_band(rubin_dp_root, img, n_obj):
+@pytest.mark.parametrize("img, n_obj, n_src", [("cal", 106, 631), ("diff", 115, 973)])
+def test_rubin_dp_catalog_multi_band(rubin_dp_root, img, n_obj, n_src):
     """Test rubin_dp_catalog_multi_band()"""
     catalog = rubin_dp_catalog_multi_band(
         rubin_dp_root,
@@ -30,6 +30,7 @@ def test_rubin_dp_catalog_multi_band(rubin_dp_root, img, n_obj):
         "is_y_band",
         "lc",
     ]
+    extra_source_cols = ["psfFlux"] if img == "diff" else []
     assert df["lc"].dtype.field_names == [
         "expTime",
         "seeing",
@@ -37,6 +38,11 @@ def test_rubin_dp_catalog_multi_band(rubin_dp_root, img, n_obj):
         "detector_rho",
         "detector_cos_phi",
         "detector_sin_phi",
+        *extra_source_cols,
         "x",
         "err",
     ]
+    flat_lc = df["lc"].nest.to_flat()
+    assert len(flat_lc) == n_src
+    if img == "diff":
+        assert not flat_lc["psfFlux"].isna().any()

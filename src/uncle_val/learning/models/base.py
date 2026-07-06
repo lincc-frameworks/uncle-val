@@ -13,6 +13,8 @@ class UncleScaler:
     available_normalizers = {
         "x": "norm_flux",
         "flux": "norm_flux",
+        # Science forced flux, present as a feature for img="diff" catalogs
+        "psfFlux": "norm_flux",
         "err": "norm_err",
         "expTime": "norm_exp_time",
         "skyBg": "norm_sky_bg",

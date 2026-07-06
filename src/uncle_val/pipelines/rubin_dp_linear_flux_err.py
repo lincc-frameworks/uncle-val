@@ -47,10 +47,10 @@ def run_rubin_dp_linear_flux_err(
     catalog = rubin_dp_catalog_single_band(
         root=survey_config.catalog_root,
         band=band,
-        obj="science",
-        img="cal",
-        phot="PSF",
-        mode="forced",
+        obj=survey_config.obj,
+        img=survey_config.img,
+        phot=survey_config.phot,
+        mode=survey_config.mode,
     )
 
     if non_extended_only:

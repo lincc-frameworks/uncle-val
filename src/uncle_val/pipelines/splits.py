@@ -4,6 +4,7 @@ import dataclasses
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,15 @@ class SurveyConfig:
         Number of observations to subsample per light curve.
     bands : tuple of str, optional
         Survey filter bands. Defaults to all six LSST bands.
+    obj : str, optional
+        Type of object catalog, "science" or "dia". Defaults to "science".
+    img : str, optional
+        Type of image used for photometry, "cal" (calibrated) or
+        "diff" (subtracted). Defaults to "cal".
+    phot : str, optional
+        Type of photometry, "PSF". Defaults to "PSF".
+    mode : str, optional
+        Type of source coordinate mode, "forced". Defaults to "forced".
 
     Examples
     --------
@@ -44,6 +54,10 @@ class SurveyConfig:
     test_start: float
     n_src: int
     bands: tuple[str, ...] = ("u", "g", "r", "i", "z", "y")
+    obj: Literal["science", "dia"] = "science"
+    img: Literal["cal", "diff"] = "cal"
+    phot: Literal["PSF"] = "PSF"
+    mode: Literal["forced"] = "forced"
 
     def __post_init__(self):
         object.__setattr__(self, "catalog_root", Path(self.catalog_root))
@@ -54,6 +68,15 @@ class SurveyConfig:
             )
         if self.n_src < 1:
             raise ValueError(f"n_src must be >= 1, got {self.n_src}")
+        for field, allowed in [
+            ("obj", ("science", "dia")),
+            ("img", ("cal", "diff")),
+            ("phot", ("PSF",)),
+            ("mode", ("forced",)),
+        ]:
+            value = getattr(self, field)
+            if value not in allowed:
+                raise ValueError(f"{field} must be one of {allowed}, got {value!r}")
 
     def to_json(self, path: str | Path) -> None:
         """Serialize to a JSON file.
@@ -105,6 +128,10 @@ def dp1_config(
     val_start: float = 0.6,
     test_start: float = 0.85,
     bands: tuple[str, ...] = ("u", "g", "r", "i", "z", "y"),
+    obj: Literal["science", "dia"] = "science",
+    img: Literal["cal", "diff"] = "cal",
+    phot: Literal["PSF"] = "PSF",
+    mode: Literal["forced"] = "forced",
 ) -> SurveyConfig:
     """SurveyConfig for Rubin Data Preview 1.
 
@@ -120,6 +147,15 @@ def dp1_config(
         Val/test boundary. Defaults to 0.85.
     bands : tuple of str, optional
         Survey filter bands. Defaults to all six LSST bands.
+    obj : str, optional
+        Type of object catalog, "science" or "dia". Defaults to "science".
+    img : str, optional
+        Type of image used for photometry, "cal" (calibrated) or
+        "diff" (subtracted). Defaults to "cal".
+    phot : str, optional
+        Type of photometry, "PSF". Defaults to "PSF".
+    mode : str, optional
+        Type of source coordinate mode, "forced". Defaults to "forced".
 
     Returns
     -------
@@ -131,6 +167,10 @@ def dp1_config(
         val_start=val_start,
         test_start=test_start,
         bands=bands,
+        obj=obj,
+        img=img,
+        phot=phot,
+        mode=mode,
     )
 
 
@@ -141,6 +181,10 @@ def dp2_config(
     val_start: float = 0.84,
     test_start: float = 0.85,
     bands: tuple[str, ...] = ("u", "g", "r", "i", "z", "y"),
+    obj: Literal["science", "dia"] = "science",
+    img: Literal["cal", "diff"] = "cal",
+    phot: Literal["PSF"] = "PSF",
+    mode: Literal["forced"] = "forced",
 ) -> SurveyConfig:
     """SurveyConfig for Rubin Data Preview 2.
 
@@ -156,6 +200,15 @@ def dp2_config(
         Val/test boundary. Defaults to 0.85.
     bands : tuple of str, optional
         Survey filter bands. Defaults to all six LSST bands.
+    obj : str, optional
+        Type of object catalog, "science" or "dia". Defaults to "science".
+    img : str, optional
+        Type of image used for photometry, "cal" (calibrated) or
+        "diff" (subtracted). Defaults to "cal".
+    phot : str, optional
+        Type of photometry, "PSF". Defaults to "PSF".
+    mode : str, optional
+        Type of source coordinate mode, "forced". Defaults to "forced".
 
     Returns
     -------
@@ -167,4 +220,8 @@ def dp2_config(
         val_start=val_start,
         test_start=test_start,
         bands=bands,
+        obj=obj,
+        img=img,
+        phot=phot,
+        mode=mode,
     )

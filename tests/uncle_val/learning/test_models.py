@@ -135,6 +135,15 @@ def test_model(model):
     _ = model(torch.randn(model.d_input))
 
 
+def test_psf_flux_normalizer():
+    """psfFlux input (science forced flux for img="diff") is normalized as a flux"""
+    model = LinearModel(input_names=["x", "err", "psfFlux"], outputs_s=False)
+    assert set(model.normalizers) == {0, 1, 2}
+    inputs = torch.tensor([[1000.0, 10.0, 1000.0]])
+    normed = model.norm_inputs(inputs)
+    assert_allclose(normed[0, 2], normed[0, 0])
+
+
 @pytest.mark.parametrize(
     "loss_prod",
     [

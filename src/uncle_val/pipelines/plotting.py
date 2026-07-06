@@ -201,6 +201,10 @@ def _get_hists(
     *,
     hash_range: tuple[float, float] | None = None,
     bands: Sequence[str],
+    obj: str,
+    img: str,
+    phot: str,
+    mode: str,
     min_n_src: int,
     non_extended_only: bool,
     n_workers: int,
@@ -216,10 +220,10 @@ def _get_hists(
     catalog = rubin_dp_catalog_multi_band(
         rubin_dp_root,
         bands=bands,
-        obj="science",
-        img="cal",
-        phot="PSF",
-        mode="forced",
+        obj=obj,
+        img=img,
+        phot=phot,
+        mode=mode,
     )
     if subsample_partitions is not None:
         n_partitions = max(1, int(round(catalog.npartitions * subsample_partitions)))
@@ -423,7 +427,6 @@ def make_plots(
     if split not in _split_map:
         raise ValueError(f"split must be one of 'train', 'val', 'test', 'all', or None; got {split!r}")
     hash_range = _split_map[split]
-    rubin_dp_root = survey_config.catalog_root
     if min_n_src is None:
         min_n_src = survey_config.n_src
 
@@ -450,9 +453,13 @@ def make_plots(
     add_mag_err_centers = 0.5 * (add_mag_err_bins[1:] + add_mag_err_bins[:-1])
 
     hists = _get_hists(
-        rubin_dp_root,
+        survey_config.catalog_root,
         hash_range=hash_range,
         bands=bands,
+        obj=survey_config.obj,
+        img=survey_config.img,
+        phot=survey_config.phot,
+        mode=survey_config.mode,
         min_n_src=min_n_src,
         non_extended_only=non_extended_only,
         n_workers=compute_config.n_workers,

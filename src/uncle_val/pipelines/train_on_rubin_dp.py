@@ -22,6 +22,11 @@ def rubin_dp_catalog_and_columns(
 ) -> tuple[lsdb.Catalog, list[str]]:
     """Build the training catalog and the catalog columns to feed the model.
 
+    The model's ``input_names`` define which catalog columns are used and in
+    which order; e.g. include "psfFlux" (science forced flux) for
+    ``img="diff"`` catalogs so the model sees how direct and difference
+    photometry differ.
+
     Parameters
     ----------
     model : BaseUncleModel
@@ -40,8 +45,13 @@ def rubin_dp_catalog_and_columns(
     lsdb.Catalog
         Catalog to train on.
     list[str]
-        Catalog columns to use as model inputs; nested light-curve fields are
-        prefixed with ``lc.``.
+        Catalog columns matching ``model.input_names`` one-to-one; nested
+        light-curve fields are prefixed with ``lc.``.
+
+    Raises
+    ------
+    ValueError
+        If some model input is not available in the catalog.
     """
     bands = survey_config.bands if bands is None else tuple(bands)
     catalog = rubin_dp_catalog_multi_band(
@@ -54,21 +64,20 @@ def rubin_dp_catalog_and_columns(
         pre_filter_partition=pre_filter_partition,
     ).map_partitions(lambda df: df.drop(columns=["band", "object_mag", "coord_ra", "coord_dec"]))
 
-    columns = [
-        "lc.x",
-        "lc.err",
-        "extendedness",
-        "lc.skyBg",
-        "lc.seeing",
-        "lc.expTime",
-        "lc.detector_rho",
-        "lc.detector_cos_phi",
-        "lc.detector_sin_phi",
-    ] + [f"is_{band}_band" for band in bands]
-    if survey_config.img == "diff":
-        # Science forced flux, so the model sees how direct and difference
-        # photometry differ
-        columns.append("lc.psfFlux")
+    lc_fields = list(catalog.dtypes["lc"].column_dtypes)
+    flat_columns = [col for col in catalog.columns if col != "lc"]
+
+    columns = []
+    for name in model.input_names:
+        if name in lc_fields:
+            columns.append(f"lc.{name}")
+        elif name in flat_columns:
+            columns.append(name)
+        else:
+            raise ValueError(
+                f"Model input {name!r} is not available in the catalog: "
+                f"nested 'lc' fields are {lc_fields}, other columns are {flat_columns}"
+            )
 
     return catalog, columns
 
@@ -90,7 +99,9 @@ def train_on_rubin_dp(
     ----------
     model : BaseUncleModel or str or Path
         Model instance to train, or a path to a saved model to load and
-        continue training from.
+        continue training from. The model's ``input_names`` define which
+        catalog columns are used as inputs and in which order, see
+        :func:`rubin_dp_catalog_and_columns`.
     output_dir : str or Path
         Run directory to save all the outputs to, see
         :func:`~uncle_val.pipelines.training_loop.training_loop` for details.
@@ -115,7 +126,8 @@ def train_on_rubin_dp(
     Path
         Path to the output model.
     list[str]
-        List of columns used as model inputs.
+        Catalog columns used as model inputs, matching ``model.input_names``
+        one-to-one; nested light-curve fields are prefixed with ``lc.``.
     """
     if isinstance(model, str | Path):
         model = torch.load(model, weights_only=False, map_location=training_config.compute_config.device)

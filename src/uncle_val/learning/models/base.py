@@ -1,3 +1,4 @@
+import json
 from collections.abc import Callable, Sequence
 from functools import cached_property
 from pathlib import Path
@@ -109,13 +110,22 @@ class BaseUncleModel(torch.nn.Module):
 
     def norm_inputs(self, inputs: torch.Tensor) -> torch.Tensor:
         """Normalizes batch"""
-        normed = inputs.clone()
-        for idx, f in self.normalizers.items():
-            normed[..., idx] = f(inputs[..., idx])
-        return normed
+        # In-place per-column assignment traces to a fixed-batch-size scatter under
+        # torch.export, so rebuild the tensor via cat instead.
+        columns = [
+            self.normalizers[idx](inputs[..., idx : idx + 1])
+            if idx in self.normalizers
+            else inputs[..., idx : idx + 1]
+            for idx in range(self.d_input)
+        ]
+        return torch.cat(columns, dim=-1)
 
     def save_onnx(self, path: Path | str) -> None:
         """Save the model to an ONNX file.
+
+        The input feature names and order are stored as ``input_names`` in the
+        ONNX model's metadata (JSON-encoded list), since the ONNX graph itself
+        only names the whole input tensor, not its individual columns.
 
         Parameters
         ----------
@@ -125,15 +135,16 @@ class BaseUncleModel(torch.nn.Module):
         if isinstance(path, str):
             path = Path(path)
 
-        torch.onnx.export(
+        onnx_program = torch.onnx.export(
             self,
-            torch.ones(self.d_input),
-            path,
+            torch.ones(1, self.d_input),
             input_names=["input"],
             output_names=["output"],
-            dynamic_shapes={"x": {0: torch.export.Dim("batch_size", min=1)}},
+            dynamic_shapes={"inputs": {0: torch.export.Dim("batch_size", min=1)}},
             dynamo=True,
         )
+        onnx_program.model.metadata_props["input_names"] = json.dumps(self.input_names)
+        onnx_program.save(path)
 
 
 class UncleModel(BaseUncleModel):
@@ -168,6 +179,8 @@ class UncleModel(BaseUncleModel):
         """Compute the output of the model"""
         output = self.module(self.norm_inputs(inputs))
         # u, uncertainty underestimation
-        output[..., 0] = torch.exp(-output[..., 0])
+        u = torch.exp(-output[..., :1])
         # We don't scale s, so nothing to do here
-        return output
+        # In-place assignment into `output` traces to a fixed-batch-size op under
+        # torch.export, so rebuild the tensor via cat instead.
+        return torch.cat([u, output[..., 1:]], dim=-1)

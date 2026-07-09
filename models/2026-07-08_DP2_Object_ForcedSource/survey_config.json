@@ -1,0 +1,18 @@
+{
+  "catalog_root": "../../data/dp2",
+  "val_start": 0.7,
+  "test_start": 0.85,
+  "n_src": 10,
+  "bands": [
+    "u",
+    "g",
+    "r",
+    "i",
+    "z",
+    "y"
+  ],
+  "obj": "science",
+  "img": "cal",
+  "phot": "PSF",
+  "mode": "forced"
+}

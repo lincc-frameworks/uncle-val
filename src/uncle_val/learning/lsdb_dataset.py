@@ -42,6 +42,51 @@ def _process_lc(
     return result
 
 
+def filter_trainable_lcs(
+    nf: NestedFrame,
+    *,
+    n_src: int,
+    hash_range: tuple[float, float] | None,
+    lc_col: str,
+    id_col: str,
+) -> tuple[NestedFrame, str]:
+    """Select light curves the training pipeline would use.
+
+    Keeps light curves with at least `n_src` observations and, if
+    `hash_range` is given, whose hashed `id_col` values fall into it.
+
+    Parameters
+    ----------
+    nf : NestedFrame
+        Frame with nested light curves.
+    n_src : int
+        Minimum number of observations per light curve.
+    hash_range : (float, float) or None
+        Compute hashes ∈ [0; 1) on `id_col` values and keep only those in
+        the given [min; max) range. If `None`, no hash filtering is applied.
+    lc_col : str
+        Nested light-curve column name.
+    id_col : str
+        Identifier column name used for hashing.
+
+    Returns
+    -------
+    NestedFrame
+        The filtered frame, with an extra column of light-curve lengths.
+    str
+        The name of the added length column.
+    """
+    length_col = f"__length_{lc_col}_"
+    nf = nf.assign(**{length_col: nf[lc_col].nest.list_lengths})
+    nf = nf.query(f"{length_col} >= {n_src}")
+
+    if hash_range is not None:
+        hashes = uniform_hash(nf[id_col])
+        mask = (hashes >= hash_range[0]) & (hashes < hash_range[1])
+        nf = nf[mask]
+    return nf, length_col
+
+
 def _process_partition(
     nf: NestedFrame,
     pixel: HealpixPixel,
@@ -53,14 +98,9 @@ def _process_partition(
     hash_range: tuple[int, int] | None,
     seed: Variable,
 ) -> NestedFrame:
-    length_col = f"__length_{lc_col}_"
-    nf[length_col] = nf[lc_col].nest.list_lengths
-    nf = nf.query(f"{length_col} >= {n_src}")
-
-    if hash_range is not None:
-        hashes = uniform_hash(nf[id_col])
-        mask = (hashes >= hash_range[0]) & (hashes < hash_range[1])
-        nf = nf[mask]
+    nf, length_col = filter_trainable_lcs(
+        nf, n_src=n_src, hash_range=hash_range, lc_col=lc_col, id_col=id_col
+    )
     if id_col in nf.columns:
         nf = nf.drop(columns=[id_col])
 

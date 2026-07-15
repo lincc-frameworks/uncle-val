@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import torch
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 from nested_pandas import NestedDtype, NestedFrame
 from scipy.stats import norm
 
@@ -372,6 +374,203 @@ def _plot_magn_vs_add_mag_err(
     ax.legend()
 
 
+def _default_result_bins() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Default ``(z_bins, mag_bins, add_mag_err_bins)`` edges for the result plots."""
+    z_bins = np.r_[-10:10:1001j]
+    mag_bins = np.arange(13, 27, 0.5)
+    add_mag_err_bins = np.r_[0:0.1:101j]
+    return z_bins, mag_bins, add_mag_err_bins
+
+
+def plot_whiten_distributions(
+    hists_pre,
+    hists_post,
+    *,
+    bands: Sequence[str] = "ugrizy",
+    z_bins: np.ndarray,
+    mag_bins: np.ndarray,
+    mag_slice: float | None = None,
+    xlim: tuple[float, float] | None = None,
+    output_path: str | Path | None = None,
+):
+    """Compact per-band figure of the whitened signal distribution.
+
+    One panel per band overlays the uncorrected ("pre") and model-corrected
+    ("post") whitened signal histograms against the standard normal, plus,
+    optionally, the same pair restricted to a single object-magnitude bin.
+    The fitted standard deviation (the uncertainty underestimation factor)
+    is annotated per band.
+
+    Parameters
+    ----------
+    hists_pre, hists_post : pd.DataFrame
+        Histogram tables as returned by ``_get_hists`` for the uncorrected
+        data (``model_path=None``) and the model-corrected data, respectively.
+        Both must share the same ``z_bins`` and ``mag_bins``.
+    bands : sequence of str
+        Bands to plot, one panel each.
+    z_bins : np.ndarray
+        Bin edges of the whitened signal used to build ``hists_*``.
+    mag_bins : np.ndarray
+        Object-magnitude bin edges used to build ``hists_*``.
+    mag_slice : float or None
+        If given, also overlay the pre/post distributions for the magnitude
+        bin containing this value.
+    xlim : (float, float) or None
+        Horizontal limits of every panel; defaults to the ``z_bins`` extent,
+        matching the other result plots.
+    output_path : path or None
+        If given, save the figure there; otherwise return it.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    # Colorblind-safe categorical colors from matplotlib's built-in
+    # "tableau-colorblind10" cycle, selected by index.
+    cb = plt.style.library["tableau-colorblind10"]["axes.prop_cycle"].by_key()["color"]
+    c_pre, c_post, c_pre_mag, c_post_mag, c_norm = cb[2], cb[0], cb[1], cb[4], "black"
+
+    z_centers = 0.5 * (z_bins[1:] + z_bins[:-1])
+    z_width = z_bins[1] - z_bins[0]
+    slice_style = (0, (1, 1))
+    if xlim is None:
+        xlim = (z_bins[0], z_bins[-1])
+
+    mag_slice_idx = None if mag_slice is None else int(np.searchsorted(mag_bins, mag_slice))
+
+    def aggregate(hists, band):
+        df, _mean, std = _aggregate_hists(
+            hists, band, hist_column="z_hist", value_centers=z_centers, value_width=z_width
+        )
+        return df["prob_dens"].to_numpy(), std
+
+    def panel(ax, band):
+        pre, std_pre = aggregate(hists_pre, band)
+        post, std_post = aggregate(hists_post, band)
+        ax.stairs(pre, z_bins, fill=True, color=c_pre, alpha=0.45)
+        ax.stairs(post, z_bins, color=c_post, lw=1.8)
+        annotations = [rf"all: $\sigma$ {std_pre:.2f}$\to${std_post:.2f}"]
+        if mag_slice_idx is not None:
+            pre_mag, std_pre_mag = aggregate(hists_pre.query(f"mag_bin_idx == {mag_slice_idx}"), band)
+            post_mag, std_post_mag = aggregate(hists_post.query(f"mag_bin_idx == {mag_slice_idx}"), band)
+            ax.stairs(pre_mag, z_bins, color=c_pre_mag, lw=1.3, ls=slice_style)
+            ax.stairs(post_mag, z_bins, color=c_post_mag, lw=1.3, ls=slice_style)
+            annotations.append(rf"$m\approx${mag_slice:g}: $\sigma$ {std_pre_mag:.2f}$\to${std_post_mag:.2f}")
+        ax.plot(z_centers, norm(loc=0, scale=1).pdf(z_centers), color=c_norm, ls="--", lw=1.1)
+        ax.text(0.03, 0.96, f"${band}$", transform=ax.transAxes, va="top", fontsize=13, fontweight="bold")
+        ax.text(
+            0.97,
+            0.96,
+            "\n".join(annotations),
+            transform=ax.transAxes,
+            va="top",
+            ha="right",
+            fontsize=7.5,
+            linespacing=1.3,
+        )
+        ax.set_xlim(*xlim)
+        ax.set_ylim(bottom=0.0)
+
+    ncols = 3
+    nrows = int(np.ceil(len(bands) / ncols))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(3.2 * ncols, 2.8 * nrows), sharex=True, sharey=True)
+    axes = np.atleast_1d(axes).flatten()
+    for ax, band in zip(axes, bands, strict=False):
+        panel(ax, band)
+    for ax in axes[len(bands) :]:
+        ax.set_visible(False)
+    for ax in axes[len(bands) - ncols : len(bands)]:
+        ax.set_xlabel("whitened signal $z$")
+    for ax in axes[::ncols]:
+        ax.set_ylabel("probability density")
+
+    handles = [
+        Patch(facecolor=c_pre, alpha=0.45, label="uncorrected, all mag"),
+        Line2D([], [], color=c_post, lw=1.8, label="corrected, all mag"),
+    ]
+    if mag_slice_idx is not None:
+        mag_label = rf"$m\approx${mag_slice:g}"
+        handles += [
+            Line2D([], [], color=c_pre_mag, lw=1.3, ls=slice_style, label=f"uncorrected, {mag_label}"),
+            Line2D([], [], color=c_post_mag, lw=1.3, ls=slice_style, label=f"corrected, {mag_label}"),
+        ]
+    handles.append(Line2D([], [], color=c_norm, lw=1.1, ls="--", label=r"$N(0,1)$"))
+    fig.legend(handles=handles, loc="upper center", ncol=len(handles), frameon=False, fontsize=8.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+
+    if output_path is not None:
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(output_path)
+        plt.close(fig)
+    return fig
+
+
+def make_whiten_distribution_plot(
+    *,
+    survey_config: SurveyConfig,
+    model_path: str | Path | BaseUncleModel,
+    model_columns: Sequence[str] = ("lc.x", "lc.err"),
+    compute_config: ComputeConfig,
+    split: str | None = None,
+    min_n_src: int | None = None,
+    non_extended_only: bool = False,
+    subsample_partitions: float | None = None,
+    mag_slice: float | None = 21.0,
+    bands: Sequence[str] = "ugrizy",
+    output_path: str | Path | None = None,
+):
+    """Compute uncorrected/corrected whitened signal and plot them together.
+
+    Runs the whitening pipeline twice for the same data and partitions, once
+    without a model (uncorrected) and once with ``model_path`` (corrected),
+    and renders the compact per-band figure of :func:`plot_whiten_distributions`.
+
+    Parameters mirror :func:`make_plots`; ``mag_slice`` selects the object
+    magnitude whose per-bin distribution is overlaid (``None`` to omit it).
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    z_bins, mag_bins, add_mag_err_bins = _default_result_bins()
+    hash_range = survey_config.hash_range(split)
+    if min_n_src is None:
+        min_n_src = survey_config.n_src
+
+    common = dict(
+        hash_range=hash_range,
+        bands=bands,
+        obj=survey_config.obj,
+        img=survey_config.img,
+        phot=survey_config.phot,
+        mode=survey_config.mode,
+        min_n_src=min_n_src,
+        non_extended_only=non_extended_only,
+        n_workers=compute_config.n_workers,
+        model_columns=model_columns,
+        device=compute_config.device,
+        mag_bins=mag_bins,
+        z_bins=z_bins,
+        add_mag_err_bins=add_mag_err_bins,
+        n_samples=1,
+        subsample_partitions=subsample_partitions,
+    )
+    hists_pre = _get_hists(survey_config.catalog_root, model_path=None, **common)
+    hists_post = _get_hists(survey_config.catalog_root, model_path=model_path, **common)
+
+    return plot_whiten_distributions(
+        hists_pre,
+        hists_post,
+        bands=bands,
+        z_bins=z_bins,
+        mag_bins=mag_bins,
+        mag_slice=mag_slice,
+        output_path=output_path,
+    )
+
+
 def make_plots(
     *,
     split: str | None = None,
@@ -417,16 +616,7 @@ def make_plots(
     subsample_partitions : float | None
         Random fraction of partitions to take. At least one partition will be used.
     """
-    _split_map = {
-        "train": survey_config.train_split,
-        "val": survey_config.val_split,
-        "test": survey_config.test_split,
-        None: None,
-        "all": None,
-    }
-    if split not in _split_map:
-        raise ValueError(f"split must be one of 'train', 'val', 'test', 'all', or None; got {split!r}")
-    hash_range = _split_map[split]
+    hash_range = survey_config.hash_range(split)
     if min_n_src is None:
         min_n_src = survey_config.n_src
 
@@ -441,14 +631,12 @@ def make_plots(
 
     bands = "ugrizy"
 
-    z_bins = np.r_[-10:10:1001j]
+    z_bins, mag_bins, add_mag_err_bins = _default_result_bins()
     z_width = z_bins[1] - z_bins[0]
     z_centers = 0.5 * (z_bins[1:] + z_bins[:-1])
 
-    mag_bins = np.arange(13, 27, 0.5)
     mag_centers = 0.5 * (mag_bins[1:] + mag_bins[:-1])
 
-    add_mag_err_bins = np.r_[0:0.1:101j]
     add_mag_err_width = add_mag_err_bins[1] - add_mag_err_bins[0]
     add_mag_err_centers = 0.5 * (add_mag_err_bins[1:] + add_mag_err_bins[:-1])
 

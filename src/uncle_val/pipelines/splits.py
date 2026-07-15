@@ -120,6 +120,30 @@ class SurveyConfig:
         """Hash range for the test set."""
         return (self.test_start, 1.0)
 
+    def hash_range(self, split: str | None) -> tuple[float, float] | None:
+        """Hash range for a named split.
+
+        Parameters
+        ----------
+        split : ``'train'``, ``'val'``, ``'test'``, ``'all'``, or ``None``
+            The split to select. ``'all'`` and ``None`` select the whole
+            dataset and return ``None`` (no hash filtering).
+
+        Returns
+        -------
+        tuple of float or None
+        """
+        split_map = {
+            "train": self.train_split,
+            "val": self.val_split,
+            "test": self.test_split,
+            None: None,
+            "all": None,
+        }
+        if split not in split_map:
+            raise ValueError(f"split must be one of 'train', 'val', 'test', 'all', or None; got {split!r}")
+        return split_map[split]
+
 
 def dp1_config(
     catalog_root: str | Path,

@@ -284,7 +284,7 @@ def _plot_hist(
     if mag_bin is not None:
         title = f"{title}; for mag=[{mag_bin[0]}; {mag_bin[1]}]"
     ax.set_title(title)
-    label = "corrected data" if if_model is None else "data"
+    label = "corrected data" if if_model else "data"
     ax.bar(x=df["value_centers"], height=df["prob_dens"], width=z_width, label=label, color="blue", alpha=0.2)
     ax.plot(z_bins, norm(loc=mean, scale=std).pdf(z_bins), label="Normal PDF fit", color="blue", alpha=1.0)
     ax.plot(
@@ -437,7 +437,7 @@ def make_plots(
 
     if_model = model_path is not None
 
-    filename_suffix = "" if if_model is None else "_corrected"
+    filename_suffix = "_corrected" if if_model else ""
 
     bands = "ugrizy"
 

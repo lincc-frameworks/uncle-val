@@ -53,6 +53,14 @@ def parse_args(argv=None):
         "with --survey-config it overrides the stored value.",
     )
     parser.add_argument(
+        "--img",
+        choices=["cal", "diff"],
+        default=None,
+        help="Image type used for photometry, 'cal' (calibrated/direct) or "
+        "'diff' (subtracted). Only used with --preset; defaults to the "
+        "preset default ('cal').",
+    )
+    parser.add_argument(
         "--n-workers",
         type=int,
         default=None,
@@ -79,7 +87,10 @@ def make_survey_config(args) -> SurveyConfig:
     if args.catalog_root is None or args.n_src is None:
         raise ValueError("--preset requires both --catalog-root and --n-src")
     preset = {"dp1": dp1_config, "dp2": dp2_config}[args.preset]
-    return preset(args.catalog_root, n_src=args.n_src)
+    kwargs = {}
+    if args.img is not None:
+        kwargs["img"] = args.img
+    return preset(args.catalog_root, n_src=args.n_src, **kwargs)
 
 
 def _count_partition(nf, *, n_src: int, splits: dict[str, tuple[float, float]]) -> pd.DataFrame:

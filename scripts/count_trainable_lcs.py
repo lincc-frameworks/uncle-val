@@ -177,12 +177,17 @@ def main(argv=None):
 
     try:
         table = count_trainable_lcs(survey_config)
+        # Print before tearing down the cluster: on shared clusters
+        # client.close() can hang and raise TimeoutError, which would
+        # otherwise discard the already-computed result.
+        print(f"Trainable light curves for {survey_config.catalog_root}, n_src >= {survey_config.n_src}:")
+        print(table.to_string(index=False))
     finally:
         if client is not None:
-            client.close()
-
-    print(f"Trainable light curves for {survey_config.catalog_root}, n_src >= {survey_config.n_src}:")
-    print(table.to_string(index=False))
+            try:
+                client.close()
+            except Exception as exc:  # noqa: BLE001
+                print(f"Warning: ignoring error during Dask client shutdown: {exc!r}")
 
 
 if __name__ == "__main__":

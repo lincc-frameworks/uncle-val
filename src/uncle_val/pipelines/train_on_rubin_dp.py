@@ -62,7 +62,11 @@ def rubin_dp_catalog_and_columns(
         phot=survey_config.phot,
         mode=survey_config.mode,
         pre_filter_partition=pre_filter_partition,
-    ).map_partitions(lambda df: df.drop(columns=["band", "object_mag", "coord_ra", "coord_dec"]))
+    ).map_partitions(
+        # coord_ra/coord_dec exist for the science catalog; the DiaObject catalog
+        # uses ra/dec instead, so ignore missing spatial columns.
+        lambda df: df.drop(columns=["band", "object_mag", "coord_ra", "coord_dec"], errors="ignore")
+    )
 
     lc_fields = list(catalog.dtypes["lc"].column_dtypes)
     flat_columns = [col for col in catalog.columns if col != "lc"]

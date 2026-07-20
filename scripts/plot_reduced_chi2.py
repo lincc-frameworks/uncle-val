@@ -25,6 +25,8 @@ def main():
     p.add_argument("--model-file", default="MLPModel.pt", help="Model file within --model-dir.")
     p.add_argument("--catalog-root", type=Path, required=True, help="Override catalog_root (absolute).")
     p.add_argument("--split", default="test", help="'train', 'val', 'test', 'all', or 'none'.")
+    p.add_argument("--obj", choices=["science", "dia"], default=None, help="Override object catalog type.")
+    p.add_argument("--img", choices=["cal", "diff"], default=None, help="Override image type.")
     p.add_argument("--n-workers", type=int, default=8)
     p.add_argument("--device", default="cpu")
     p.add_argument("--subsample-partitions", type=float, default=None)
@@ -32,9 +34,14 @@ def main():
     args = p.parse_args()
 
     split = None if args.split.lower() in ("none", "all") else args.split
+    overrides = {"catalog_root": str(args.catalog_root)}
+    if args.obj is not None:
+        overrides["obj"] = args.obj
+    if args.img is not None:
+        overrides["img"] = args.img
     survey_config = dataclasses.replace(
         SurveyConfig.from_json(args.model_dir / "survey_config.json"),
-        catalog_root=str(args.catalog_root),
+        **overrides,
     )
     model_path = args.model_dir / args.model_file
     model = torch.load(model_path, weights_only=False, map_location="cpu")

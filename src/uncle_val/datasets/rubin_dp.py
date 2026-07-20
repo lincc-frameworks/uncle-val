@@ -9,6 +9,7 @@ import pyarrow.feather as feather
 from nested_pandas import NestedFrame
 from upath import UPath
 
+from uncle_val.utils.mag_flux import flux2mag
 from uncle_val.variability_detectors import get_combined_variability_detector
 
 LSDB_BANDS = "ugrizy"
@@ -97,6 +98,24 @@ def _split_light_curves_by_band(
     return pd.concat(single_band_dfs)
 
 
+def _normalize_dia_object_columns(df, *, bands):
+    """Give DiaObject partitions the object-level columns the science path expects.
+
+    The DiaObject catalog has no per-band ``psfMag`` or ``extendedness`` object
+    columns. We derive the object magnitude from the mean science (direct-image)
+    flux ``{band}_scienceFluxMean`` and, for now, set ``extendedness`` to zero,
+    i.e. treat DiaObjects as point sources.
+
+    TODO: cross-match with the science Object catalog to obtain a real per-object
+    ``extendedness`` (and magnitude) instead of assuming a point source.
+    """
+    for band in bands:
+        df[f"{band}_psfMag"] = flux2mag(np.asarray(df[f"{band}_scienceFluxMean"]))
+        df = df.drop(columns=[f"{band}_scienceFluxMean"])
+        df[f"{band}_extendedness"] = 0.0
+    return df
+
+
 def _filter_variable_lcs(df, *, nested_flux_col, nested_err_col, var_detector):
     if len(df) == 0:
         return df
@@ -173,6 +192,7 @@ def _process_partition_multi_band(
     var_detector,
     ccd_visits_path,
     ccd_visits_cols,
+    require_object_mag=True,
 ):
     df = _rename_columns(df, lc_col=lc_col, id_col=id_col, flux_col=flux_col, flux_err_col=flux_err_col)
 
@@ -182,7 +202,11 @@ def _process_partition_multi_band(
 
     # Filter bands and split light curves (rows) by band
     df = _split_light_curves_by_band(df, bands=bands, lc_col="lc")
-    df = df.dropna(subset=["lc", "object_mag", "extendedness"])
+    # For DiaObjects the object magnitude is derived from the mean science flux
+    # and may be undefined (non-positive flux); keeping those light curves does
+    # not affect the whitening, so we do not require it there.
+    required_cols = ["lc", "extendedness"] + (["object_mag"] if require_object_mag else [])
+    df = df.dropna(subset=required_cols)
 
     # Filter out variable light curves
     df = _filter_variable_lcs(df, nested_flux_col="lc.x", nested_err_col="lc.err", var_detector=var_detector)
@@ -218,12 +242,17 @@ def _open_catalog(
         case "science":
             catalog_name = "object_collection"
             id_col = "objectId"
+        case "dia":
+            catalog_name = "dia_object_collection"
+            id_col = "diaObjectId"
         case _:
-            raise NotImplementedError(f"obg '{obj}' not implemented")
+            raise NotImplementedError(f"obj '{obj}' not implemented")
 
     match mode, obj:
         case "forced", "science":
             source_col = "objectForcedSource"
+        case "forced", "dia":
+            source_col = "diaObjectForcedSource"
         case _:
             raise NotImplementedError(f"mode '{mode}' and obj '{obj}' are not supported")
 
@@ -248,9 +277,14 @@ def _open_catalog(
     flux_err_col = f"{flux_col}Err"
     flux_flag_col = f"{flux_col}_flag"
 
-    obj_mag_cols = [f"{band}_psfMag" for band in bands]
-
-    obj_extendedness_cols = [f"{band}_extendedness" for band in bands]
+    # DiaObjects lack per-band psfMag/extendedness object columns; we request the
+    # mean science flux instead and derive both in _normalize_dia_object_columns.
+    if obj == "dia":
+        obj_mag_cols = [f"{band}_scienceFluxMean" for band in bands]
+        obj_extendedness_cols = []
+    else:
+        obj_mag_cols = [f"{band}_psfMag" for band in bands]
+        obj_extendedness_cols = [f"{band}_extendedness" for band in bands]
 
     other_flag_cols = [
         "pixelFlags_suspect",
@@ -428,6 +462,11 @@ def rubin_dp_catalog_multi_band(
         read_visit_cols=True,
     )
 
+    # DiaObjects lack object-level psfMag/extendedness; derive them before the
+    # per-band split that expects those columns.
+    if obj == "dia":
+        catalog = catalog.map_partitions(_normalize_dia_object_columns, bands=bands)
+
     if pre_filter_partition is not None:
         catalog = catalog.map_partitions(pre_filter_partition)
 
@@ -449,5 +488,6 @@ def rubin_dp_catalog_multi_band(
         var_detector=var_detector,
         ccd_visits_path=ccd_visits_path,
         ccd_visits_cols=ccd_visits_cols,
+        require_object_mag=obj != "dia",
     )
     return mapped_catalog

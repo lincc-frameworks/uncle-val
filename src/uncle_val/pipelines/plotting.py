@@ -85,6 +85,59 @@ def _build_hist_and_samples(monochrome, *, band, mag_bins, value_bins, value_col
     return nf
 
 
+def _apply_model_and_whiten(df, model_path, model_columns, device):
+    """Apply one model (or none) to ``df`` and return the whitened frame.
+
+    ``model_path`` is a single model path/instance or ``None``, applied to
+    every row of ``df`` uniformly.
+    """
+    if model_path is not None:
+        model = torch.load(model_path, weights_only=False).to(device)
+        model.eval()
+
+        def apply_model(x, err, *extras):
+            inputs = np.stack(np.broadcast_arrays(x, err, *extras), axis=-1, dtype=np.float32)
+            outputs = model(torch.tensor(inputs, device=device)).cpu().detach().numpy()
+
+            uu = outputs[..., 0].flatten()
+            corrected_err = uu * err
+            if model.outputs_s:
+                sf = outputs[..., 1].flatten()
+                corrected_x = x + sf * corrected_err
+            else:
+                corrected_x = x
+
+            orig_mag_err = 2.5 / np.log(10.0) * err / x
+            corrected_mag_err = 2.5 / np.log(10.0) * corrected_err / corrected_x
+            addition_mag_err = np.sqrt(np.maximum(corrected_mag_err**2 - orig_mag_err**2, 0))
+
+            return {
+                "corrected_lc.x": corrected_x,
+                "corrected_lc.err": corrected_err,
+                "corrected_lc.add_mag_err": addition_mag_err,
+            }
+
+        df["lc"] = df.reduce(apply_model, *model_columns)["corrected_lc"]
+    else:
+        df["lc.add_mag_err"] = 0.0
+
+    return df.reduce(
+        _whiten_flux_err,
+        "lc.x",
+        "lc.err",
+        append_columns=True,
+    ).reset_index(drop=True)
+
+
+def _model_path_for_band(model_path, band):
+    """Look up ``band``'s model path from a per-band ``model_path`` dict."""
+    if band not in model_path:
+        raise KeyError(
+            f"model_path dict has no entry for band {band!r}; available bands: {sorted(model_path)}"
+        )
+    return model_path[band]
+
+
 def _extract_hists_and_samples(
     df,
     pixel,
@@ -132,44 +185,21 @@ def _extract_hists_and_samples(
             }
         )
 
-    if model_path is not None:
-        model = torch.load(model_path, weights_only=False).to(device)
-        model.eval()
-
-        def apply_model(x, err, *extras):
-            inputs = np.stack(np.broadcast_arrays(x, err, *extras), axis=-1, dtype=np.float32)
-            outputs = model(torch.tensor(inputs, device=device)).cpu().detach().numpy()
-
-            uu = outputs[..., 0].flatten()
-            corrected_err = uu * err
-            if model.outputs_s:
-                sf = outputs[..., 1].flatten()
-                corrected_x = x + sf * corrected_err
-            else:
-                corrected_x = x
-
-            orig_mag_err = 2.5 / np.log(10.0) * err / x
-            corrected_mag_err = 2.5 / np.log(10.0) * corrected_err / corrected_x
-            addition_mag_err = np.sqrt(np.maximum(corrected_mag_err**2 - orig_mag_err**2, 0))
-
-            return {
-                "corrected_lc.x": corrected_x,
-                "corrected_lc.err": corrected_err,
-                "corrected_lc.add_mag_err": addition_mag_err,
-            }
-
-        df["lc"] = df.reduce(apply_model, *model_columns)["corrected_lc"]
+    if isinstance(model_path, dict):
+        # Skip bands with no rows in this partition -- .reduce() on an empty
+        # slice can't infer the nested "corrected_lc" column structure.
+        whiten = pd.concat(
+            [
+                _apply_model_and_whiten(
+                    df[df["band"] == band], _model_path_for_band(model_path, band), model_columns, device
+                )
+                for band in bands
+                if (df["band"] == band).any()
+            ],
+            ignore_index=True,
+        )
     else:
-        df["lc.add_mag_err"] = 0.0
-
-    whiten = df.reduce(
-        _whiten_flux_err,
-        "lc.x",
-        "lc.err",
-        append_columns=True,
-    ).reset_index(
-        drop=True,
-    )
+        whiten = _apply_model_and_whiten(df, model_path, model_columns, device)
 
     result_nfs = []
     for band in bands:
@@ -211,7 +241,7 @@ def _get_hists(
     min_n_src: int,
     non_extended_only: bool,
     n_workers: int,
-    model_path: str | Path | None,
+    model_path: str | Path | dict[str, str | Path] | None,
     model_columns: Sequence[str],
     device: torch.device | str = "cpu",
     mag_bins: np.ndarray,
@@ -716,7 +746,7 @@ def plot_whiten_density(
 def make_whiten_density_plot(
     *,
     survey_config: SurveyConfig,
-    model_path: str | Path | BaseUncleModel,
+    model_path: str | Path | BaseUncleModel | dict[str, str | Path],
     model_columns: Sequence[str] = ("lc.x", "lc.err"),
     compute_config: ComputeConfig,
     split: str | None = None,
@@ -735,7 +765,9 @@ def make_whiten_density_plot(
     and renders the twin-heatmap figure of :func:`plot_whiten_density`.
 
     Parameters mirror :func:`make_whiten_distribution_plot`; ``ylim`` sets the
-    vertical half-range of every panel.
+    vertical half-range of every panel. ``model_path`` may also be a
+    ``dict[str, str | Path]`` mapping band letter to a per-band model path,
+    in which case each band's data is corrected with its own model.
 
     Returns
     -------
@@ -868,7 +900,7 @@ def plot_addmagerr_density(
 def make_addmagerr_density_plot(
     *,
     survey_config: SurveyConfig,
-    model_path: str | Path | BaseUncleModel,
+    model_path: str | Path | BaseUncleModel | dict[str, str | Path],
     model_columns: Sequence[str] = ("lc.x", "lc.err"),
     compute_config: ComputeConfig,
     split: str | None = None,
@@ -886,7 +918,9 @@ def make_addmagerr_density_plot(
     error is zero without a model) and renders :func:`plot_addmagerr_density`.
 
     Parameters mirror :func:`make_whiten_density_plot`; ``ylim`` sets the upper
-    limit of every panel.
+    limit of every panel. ``model_path`` may also be a ``dict[str, str | Path]``
+    mapping band letter to a per-band model path, in which case each band's
+    data is corrected with its own model.
 
     Returns
     -------
@@ -1150,6 +1184,38 @@ def _empty_chi2_counts(n_bins):
     )
 
 
+def _reduce_chi2(df, model_path, model_columns, device):
+    """Per-light-curve reduced chi2 (reported and corrected) for ``df``.
+
+    ``model_path`` is a single model path/instance or ``None``, applied to
+    every row of ``df`` uniformly. Returns ``df.reduce(...)`` output with
+    ``band`` and ``length`` columns attached.
+    """
+    model = None
+    if model_path is not None:
+        model = torch.load(model_path, weights_only=False).to(device)
+        model.eval()
+
+    def per_lc(x, err, *extras):
+        x = x.astype(float)
+        err = err.astype(float)
+        if model is not None:
+            inputs = np.stack(np.broadcast_arrays(x, err, *extras), axis=-1, dtype=np.float32)
+            uu = model(torch.tensor(inputs, device=device)).cpu().detach().numpy()[..., 0].ravel()
+            corr_err = uu * err
+        else:
+            corr_err = err
+        return {
+            "full_uncorrected": _weighted_reduced_chi2(x, err),
+            "full_corrected": _weighted_reduced_chi2(x, corr_err),
+        }
+
+    chi2 = df.reduce(per_lc, *model_columns)
+    chi2["band"] = df["band"].to_numpy()
+    chi2["length"] = np.asarray(df["lc"].nest.list_lengths)
+    return chi2
+
+
 def _extract_chi2(
     df,
     pixel,
@@ -1184,28 +1250,18 @@ def _extract_chi2(
     if len(df) == 0:
         return _empty_chi2_counts(n_bins)
 
-    model = None
-    if model_path is not None:
-        model = torch.load(model_path, weights_only=False).to(device)
-        model.eval()
-
-    def per_lc(x, err, *extras):
-        x = x.astype(float)
-        err = err.astype(float)
-        if model is not None:
-            inputs = np.stack(np.broadcast_arrays(x, err, *extras), axis=-1, dtype=np.float32)
-            uu = model(torch.tensor(inputs, device=device)).cpu().detach().numpy()[..., 0].ravel()
-            corr_err = uu * err
-        else:
-            corr_err = err
-        return {
-            "full_uncorrected": _weighted_reduced_chi2(x, err),
-            "full_corrected": _weighted_reduced_chi2(x, corr_err),
-        }
-
-    chi2 = df.reduce(per_lc, *model_columns)
-    chi2["band"] = df["band"].to_numpy()
-    chi2["length"] = np.asarray(df["lc"].nest.list_lengths)
+    if isinstance(model_path, dict):
+        chi2 = pd.concat(
+            [
+                _reduce_chi2(
+                    df[df["band"] == band], _model_path_for_band(model_path, band), model_columns, device
+                )
+                for band in bands
+            ],
+            ignore_index=True,
+        )
+    else:
+        chi2 = _reduce_chi2(df, model_path, model_columns, device)
 
     rows = []
     for band in bands:
@@ -1253,7 +1309,7 @@ def _get_chi2_hists(
     length_max: int,
     non_extended_only: bool,
     n_workers: int,
-    model_path: str | Path | None,
+    model_path: str | Path | dict[str, str | Path] | None,
     model_columns: Sequence[str],
     device: torch.device | str,
     lg_chi2_bins: np.ndarray,
@@ -1447,7 +1503,7 @@ def _default_lg_chi2_bins() -> np.ndarray:
 def make_chi2_distribution_plot(
     *,
     survey_config: SurveyConfig,
-    model_path: str | Path | BaseUncleModel,
+    model_path: str | Path | BaseUncleModel | dict[str, str | Path],
     model_columns: Sequence[str] = ("lc.x", "lc.err"),
     compute_config: ComputeConfig,
     split: str | None = None,
@@ -1472,7 +1528,9 @@ def make_chi2_distribution_plot(
     Parameters mirror :func:`make_whiten_distribution_plot`. ``min_n_src``
     defaults to ``survey_config.n_src`` so only light curves the training
     pipeline would use are included; ``length_max`` caps the degrees of freedom
-    tracked for the calibrated reference.
+    tracked for the calibrated reference. ``model_path`` may also be a
+    ``dict[str, str | Path]`` mapping band letter to a per-band model path, in
+    which case each band's data is corrected with its own model.
 
     Returns
     -------
@@ -1564,6 +1622,38 @@ def _empty_kl_counts(n_bins):
     )
 
 
+def _reduce_kl(df, model_path, model_columns, device):
+    """Per-light-curve KL statistic (reported and corrected) for ``df``.
+
+    ``model_path`` is a single model path/instance or ``None``, applied to
+    every row of ``df`` uniformly. Returns ``df.reduce(...)`` output with
+    ``band`` and ``length`` columns attached.
+    """
+    model = None
+    if model_path is not None:
+        model = torch.load(model_path, weights_only=False).to(device)
+        model.eval()
+
+    def per_lc(x, err, *extras):
+        x = x.astype(float)
+        err = err.astype(float)
+        if model is not None:
+            inputs = np.stack(np.broadcast_arrays(x, err, *extras), axis=-1, dtype=np.float32)
+            uu = model(torch.tensor(inputs, device=device)).cpu().detach().numpy()[..., 0].ravel()
+            corr_err = uu * err
+        else:
+            corr_err = err
+        return {
+            "full_uncorrected": _lc_kl(x, err),
+            "full_corrected": _lc_kl(x, corr_err),
+        }
+
+    kl = df.reduce(per_lc, *model_columns)
+    kl["band"] = df["band"].to_numpy()
+    kl["length"] = np.asarray(df["lc"].nest.list_lengths)
+    return kl
+
+
 def _extract_kl(
     df,
     pixel,
@@ -1598,28 +1688,18 @@ def _extract_kl(
     if len(df) == 0:
         return _empty_kl_counts(n_bins)
 
-    model = None
-    if model_path is not None:
-        model = torch.load(model_path, weights_only=False).to(device)
-        model.eval()
-
-    def per_lc(x, err, *extras):
-        x = x.astype(float)
-        err = err.astype(float)
-        if model is not None:
-            inputs = np.stack(np.broadcast_arrays(x, err, *extras), axis=-1, dtype=np.float32)
-            uu = model(torch.tensor(inputs, device=device)).cpu().detach().numpy()[..., 0].ravel()
-            corr_err = uu * err
-        else:
-            corr_err = err
-        return {
-            "full_uncorrected": _lc_kl(x, err),
-            "full_corrected": _lc_kl(x, corr_err),
-        }
-
-    kl = df.reduce(per_lc, *model_columns)
-    kl["band"] = df["band"].to_numpy()
-    kl["length"] = np.asarray(df["lc"].nest.list_lengths)
+    if isinstance(model_path, dict):
+        kl = pd.concat(
+            [
+                _reduce_kl(
+                    df[df["band"] == band], _model_path_for_band(model_path, band), model_columns, device
+                )
+                for band in bands
+            ],
+            ignore_index=True,
+        )
+    else:
+        kl = _reduce_kl(df, model_path, model_columns, device)
 
     rows = []
     for band in bands:
@@ -1667,7 +1747,7 @@ def _get_kl_hists(
     length_max: int,
     non_extended_only: bool,
     n_workers: int,
-    model_path: str | Path | None,
+    model_path: str | Path | dict[str, str | Path] | None,
     model_columns: Sequence[str],
     device: torch.device | str,
     lg_kl_bins: np.ndarray,
@@ -1869,7 +1949,7 @@ def _default_lg_kl_bins() -> np.ndarray:
 def make_kl_distribution_plot(
     *,
     survey_config: SurveyConfig,
-    model_path: str | Path | BaseUncleModel,
+    model_path: str | Path | BaseUncleModel | dict[str, str | Path],
     model_columns: Sequence[str] = ("lc.x", "lc.err"),
     compute_config: ComputeConfig,
     split: str | None = None,
@@ -1894,7 +1974,9 @@ def make_kl_distribution_plot(
     Parameters mirror :func:`make_chi2_distribution_plot`. ``min_n_src`` defaults
     to ``survey_config.n_src`` so only light curves the training pipeline would
     use are included; ``length_max`` caps the degrees of freedom tracked for the
-    calibrated reference.
+    calibrated reference. ``model_path`` may also be a ``dict[str, str | Path]``
+    mapping band letter to a per-band model path, in which case each band's
+    data is corrected with its own model.
 
     Returns
     -------

@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from functools import partial
 from pathlib import Path
 
@@ -150,6 +150,7 @@ def _extract_hists_and_samples(
     min_n_src,
     n_samples,
     non_extended_only,
+    pre_filter_partition,
     model_path,
     model_columns,
     device,
@@ -164,6 +165,9 @@ def _extract_hists_and_samples(
 
     if non_extended_only:
         df = df.query("extendedness == 0.0")
+
+    if pre_filter_partition is not None:
+        df = pre_filter_partition(df)
 
     if len(df) == 0:
         return pd.DataFrame(
@@ -240,6 +244,7 @@ def _get_hists(
     mode: str,
     min_n_src: int,
     non_extended_only: bool,
+    pre_filter_partition: Callable[[NestedFrame], NestedFrame] | None = None,
     n_workers: int,
     model_path: str | Path | dict[str, str | Path] | None,
     model_columns: Sequence[str],
@@ -275,6 +280,7 @@ def _get_hists(
         min_n_src=min_n_src,
         n_samples=n_samples,
         non_extended_only=non_extended_only,
+        pre_filter_partition=pre_filter_partition,
         model_path=model_path,
         model_columns=model_columns,
         device=torch.device(device),
@@ -547,6 +553,7 @@ def make_whiten_distribution_plot(
     split: str | None = None,
     min_n_src: int | None = None,
     non_extended_only: bool = False,
+    pre_filter_partition: Callable[[NestedFrame], NestedFrame] | None = None,
     subsample_partitions: float | None = None,
     mag_slice: float | None = 21.0,
     bands: Sequence[str] = "ugrizy",
@@ -579,6 +586,7 @@ def make_whiten_distribution_plot(
         mode=survey_config.mode,
         min_n_src=min_n_src,
         non_extended_only=non_extended_only,
+        pre_filter_partition=pre_filter_partition,
         n_workers=compute_config.n_workers,
         model_columns=model_columns,
         device=compute_config.device,
@@ -649,6 +657,7 @@ def plot_whiten_density(
     mag_bins: np.ndarray,
     ylim: float = 8.0,
     xlim: tuple[float, float] | None = None,
+    selection_label: str | None = None,
     output_path: str | Path | None = None,
 ):
     """Twin per-band heatmaps of the whitened-signal distribution vs magnitude.
@@ -679,6 +688,9 @@ def plot_whiten_density(
         Vertical half-range of every panel, which spans ``[-ylim, ylim]``.
     xlim : (float, float) or None
         Object-magnitude limits of every panel; defaults to the ``mag_bins`` extent.
+    selection_label : str or None
+        If given, drawn as a figure suptitle describing the sample selection
+        applied to ``hists_pre``/``hists_post``.
     output_path : path or None
         If given, save the figure there; otherwise return it.
 
@@ -736,6 +748,9 @@ def plot_whiten_density(
     cbar = fig.colorbar(mesh, ax=axes.ravel().tolist())
     cbar.set_label(r"$P(z\,|\,\mathrm{mag})$, per-magnitude peak $=1$")
 
+    if selection_label is not None:
+        fig.suptitle(selection_label, fontsize=9)
+
     if output_path is not None:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -752,10 +767,12 @@ def make_whiten_density_plot(
     split: str | None = None,
     min_n_src: int | None = None,
     non_extended_only: bool = False,
+    pre_filter_partition: Callable[[NestedFrame], NestedFrame] | None = None,
     subsample_partitions: float | None = None,
     bands: Sequence[str] = "ugrizy",
     ylim: float = 8.0,
     xlim: tuple[float, float] | None = None,
+    selection_label: str | None = None,
     output_path: str | Path | None = None,
 ):
     """Compute uncorrected/corrected whitened signal and plot its distribution vs magnitude.
@@ -787,6 +804,7 @@ def make_whiten_density_plot(
         mode=survey_config.mode,
         min_n_src=min_n_src,
         non_extended_only=non_extended_only,
+        pre_filter_partition=pre_filter_partition,
         n_workers=compute_config.n_workers,
         model_columns=model_columns,
         device=compute_config.device,
@@ -807,6 +825,7 @@ def make_whiten_density_plot(
         mag_bins=mag_bins,
         ylim=ylim,
         xlim=xlim,
+        selection_label=selection_label,
         output_path=output_path,
     )
 
@@ -819,6 +838,7 @@ def plot_addmagerr_density(
     mag_bins: np.ndarray,
     ylim: float = 0.5,
     xlim: tuple[float, float] | None = None,
+    selection_label: str | None = None,
     output_path: str | Path | None = None,
 ):
     """Per-band heatmaps of the model-added magnitude error vs object magnitude.
@@ -846,6 +866,9 @@ def plot_addmagerr_density(
         Upper limit of every panel, which spans ``[0, ylim]``.
     xlim : (float, float) or None
         Object-magnitude limits of every panel; defaults to the ``mag_bins`` extent.
+    selection_label : str or None
+        If given, drawn as a figure suptitle describing the sample selection
+        applied to ``hists``.
     output_path : path or None
         If given, save the figure there; otherwise return it.
 
@@ -890,6 +913,9 @@ def plot_addmagerr_density(
     cbar = fig.colorbar(mesh, ax=axes.ravel().tolist())
     cbar.set_label(r"$P(\Delta m\,|\,\mathrm{mag})$, per-magnitude peak $=1$")
 
+    if selection_label is not None:
+        fig.suptitle(selection_label, fontsize=9)
+
     if output_path is not None:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -906,10 +932,12 @@ def make_addmagerr_density_plot(
     split: str | None = None,
     min_n_src: int | None = None,
     non_extended_only: bool = False,
+    pre_filter_partition: Callable[[NestedFrame], NestedFrame] | None = None,
     subsample_partitions: float | None = None,
     bands: Sequence[str] = "ugrizy",
     ylim: float = 0.5,
     xlim: tuple[float, float] | None = None,
+    selection_label: str | None = None,
     output_path: str | Path | None = None,
 ):
     """Compute the model-added magnitude error and plot its distribution vs magnitude.
@@ -942,6 +970,7 @@ def make_addmagerr_density_plot(
         mode=survey_config.mode,
         min_n_src=min_n_src,
         non_extended_only=non_extended_only,
+        pre_filter_partition=pre_filter_partition,
         n_workers=compute_config.n_workers,
         model_columns=model_columns,
         device=compute_config.device,
@@ -959,6 +988,7 @@ def make_addmagerr_density_plot(
         mag_bins=mag_bins,
         ylim=ylim,
         xlim=xlim,
+        selection_label=selection_label,
         output_path=output_path,
     )
 
@@ -969,6 +999,7 @@ def make_plots(
     survey_config: SurveyConfig,
     min_n_src: int | None = None,
     non_extended_only: bool,
+    pre_filter_partition: Callable[[NestedFrame], NestedFrame] | None = None,
     model_path: str | Path | BaseUncleModel | None,
     model_columns: Sequence[str] = ("lc.x", "lc.err"),
     n_samples: int,
@@ -991,6 +1022,11 @@ def make_plots(
         Minimum number of sources per object. Defaults to ``survey_config.n_src``.
     non_extended_only : bool
         Whether to filter the data with `extendedness == 0.0`.
+    pre_filter_partition : callable or None
+        Optional function applied to each catalog partition, after the light
+        curve length, split and extendedness cuts and before the histograms
+        are built. Receives a ``NestedFrame`` and returns a filtered
+        ``NestedFrame``.
     model_path : path or None
         Path to a torch model file or None. If None, plot the original data.
     model_columns : Sequence[str], optional
@@ -1042,6 +1078,7 @@ def make_plots(
         mode=survey_config.mode,
         min_n_src=min_n_src,
         non_extended_only=non_extended_only,
+        pre_filter_partition=pre_filter_partition,
         n_workers=compute_config.n_workers,
         model_path=model_path,
         model_columns=model_columns,
@@ -1226,6 +1263,7 @@ def _extract_chi2(
     min_n_src,
     length_max,
     non_extended_only,
+    pre_filter_partition,
     model_path,
     model_columns,
     device,
@@ -1247,6 +1285,8 @@ def _extract_chi2(
         df = df[(hashes >= hash_range[0]) & (hashes < hash_range[1])]
     if non_extended_only:
         df = df.query("extendedness == 0.0")
+    if pre_filter_partition is not None:
+        df = pre_filter_partition(df)
     if len(df) == 0:
         return _empty_chi2_counts(n_bins)
 
@@ -1308,6 +1348,7 @@ def _get_chi2_hists(
     min_n_src: int,
     length_max: int,
     non_extended_only: bool,
+    pre_filter_partition: Callable[[NestedFrame], NestedFrame] | None = None,
     n_workers: int,
     model_path: str | Path | dict[str, str | Path] | None,
     model_columns: Sequence[str],
@@ -1331,6 +1372,7 @@ def _get_chi2_hists(
         min_n_src=min_n_src,
         length_max=length_max,
         non_extended_only=non_extended_only,
+        pre_filter_partition=pre_filter_partition,
         model_path=model_path,
         model_columns=model_columns,
         device=torch.device(device),
@@ -1510,6 +1552,7 @@ def make_chi2_distribution_plot(
     min_n_src: int | None = None,
     length_max: int = 1000,
     non_extended_only: bool = False,
+    pre_filter_partition: Callable[[NestedFrame], NestedFrame] | None = None,
     subsample_partitions: float | None = None,
     bands: Sequence[str] = "ugrizy",
     lg_chi2_bins: np.ndarray | None = None,
@@ -1553,6 +1596,7 @@ def make_chi2_distribution_plot(
         min_n_src=min_n_src,
         length_max=length_max,
         non_extended_only=non_extended_only,
+        pre_filter_partition=pre_filter_partition,
         n_workers=compute_config.n_workers,
         model_path=model_path,
         model_columns=model_columns,
@@ -1664,6 +1708,7 @@ def _extract_kl(
     min_n_src,
     length_max,
     non_extended_only,
+    pre_filter_partition,
     model_path,
     model_columns,
     device,
@@ -1685,6 +1730,8 @@ def _extract_kl(
         df = df[(hashes >= hash_range[0]) & (hashes < hash_range[1])]
     if non_extended_only:
         df = df.query("extendedness == 0.0")
+    if pre_filter_partition is not None:
+        df = pre_filter_partition(df)
     if len(df) == 0:
         return _empty_kl_counts(n_bins)
 
@@ -1746,6 +1793,7 @@ def _get_kl_hists(
     min_n_src: int,
     length_max: int,
     non_extended_only: bool,
+    pre_filter_partition: Callable[[NestedFrame], NestedFrame] | None = None,
     n_workers: int,
     model_path: str | Path | dict[str, str | Path] | None,
     model_columns: Sequence[str],
@@ -1769,6 +1817,7 @@ def _get_kl_hists(
         min_n_src=min_n_src,
         length_max=length_max,
         non_extended_only=non_extended_only,
+        pre_filter_partition=pre_filter_partition,
         model_path=model_path,
         model_columns=model_columns,
         device=torch.device(device),
@@ -1956,6 +2005,7 @@ def make_kl_distribution_plot(
     min_n_src: int | None = None,
     length_max: int = 1000,
     non_extended_only: bool = False,
+    pre_filter_partition: Callable[[NestedFrame], NestedFrame] | None = None,
     subsample_partitions: float | None = None,
     bands: Sequence[str] = "ugrizy",
     lg_kl_bins: np.ndarray | None = None,
@@ -1999,6 +2049,7 @@ def make_kl_distribution_plot(
         min_n_src=min_n_src,
         length_max=length_max,
         non_extended_only=non_extended_only,
+        pre_filter_partition=pre_filter_partition,
         n_workers=compute_config.n_workers,
         model_path=model_path,
         model_columns=model_columns,

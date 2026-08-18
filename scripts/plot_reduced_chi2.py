@@ -72,6 +72,11 @@ def main():
     p.add_argument("--n-workers", type=int, default=8)
     p.add_argument("--device", default="cpu")
     p.add_argument("--subsample-partitions", type=float, default=None)
+    p.add_argument(
+        "--non-extended-only",
+        action="store_true",
+        help="Keep only point sources, extendedness == 0. Default: keep all objects.",
+    )
     p.add_argument("--output", type=Path, default=None, help="Output PDF; defaults into the model dir.")
     args = p.parse_args()
 
@@ -113,6 +118,8 @@ def main():
 
     output = args.output or model_dir_for_config / "plots" / f"model_{args.split}" / "reduced_chi2.pdf"
 
+    pre_filter_partition = (lambda df: df.query("extendedness == 0.0")) if args.non_extended_only else None
+
     make_chi2_distribution_plot(
         survey_config=survey_config,
         model_path=model_path,
@@ -121,6 +128,7 @@ def main():
         split=split,
         bands=bands,
         subsample_partitions=args.subsample_partitions,
+        pre_filter_partition=pre_filter_partition,
         output_path=output,
     )
     print(f"Wrote {output}")

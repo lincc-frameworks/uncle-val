@@ -1,11 +1,15 @@
 #!/usr/bin/env python
-"""Train ConstantMagErrModel on one band of a Rubin DP catalog.
+"""Train a constant-magnitude-error model on a Rubin DP catalog.
 
-The model has a single trainable parameter: a constant systematic magnitude
-error added in quadrature to the reported photon-noise magnitude error,
+A constant systematic magnitude error is added in quadrature to the reported
+photon-noise magnitude error,
 
     new_mag_err = hypot(mag_err, 1e-2 * addition_centi_mag_err)
     u = magerr2fluxerr(new_mag_err) / flux_err
+
+By default a single band is trained, giving one trainable parameter. With
+--per-band, all of --bands are trained together in one run, giving one
+parameter per band, selected by the catalog's one-hot band columns.
 
 Defaults target the DP2 science Object / forcedSource catalog, r band, on
 gondor's second GPU; pass --non-extended-only to keep point sources only.
@@ -22,7 +26,12 @@ from uncle_val.learning.losses import (
     kl_divergence_whiten_loss,
     minus_ln_chi2_prob_loss,
 )
-from uncle_val.pipelines import ComputeConfig, TrainingConfig, run_rubin_dp_constant_magerr
+from uncle_val.pipelines import (
+    ComputeConfig,
+    TrainingConfig,
+    run_rubin_dp_constant_magerr,
+    run_rubin_dp_per_band_constant_magerr,
+)
 from uncle_val.pipelines.splits import SurveyConfig, dp1_config, dp2_config
 
 SURVEY_CONFIGS = {"dp1": dp1_config, "dp2": dp2_config}
@@ -33,7 +42,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--catalog-root", type=Path, required=True, help="Root of the DP HATS catalogs.")
     p.add_argument("--survey", choices=list(SURVEY_CONFIGS), default="dp2")
-    p.add_argument("--band", default="r")
+    p.add_argument("--band", default=None, help="Band to train on, single-band mode. Default: r.")
+    p.add_argument(
+        "--per-band",
+        action="store_true",
+        help="Train one systematic magnitude error per band, over --bands, in a single run.",
+    )
+    p.add_argument(
+        "--bands",
+        default="ugrizy",
+        help="Bands to fit with --per-band, e.g. 'gri'. Ignored without --per-band.",
+    )
     p.add_argument("--img", choices=["cal", "diff"], default="cal")
     p.add_argument("--obj", choices=["science", "dia"], default="science")
     p.add_argument(
@@ -52,17 +71,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--n-workers", type=int, default=16)
     p.add_argument("--device", default="cuda:1")
     p.add_argument("--output-dir", type=Path, default=None)
-    return p.parse_args(argv)
+    args = p.parse_args(argv)
+
+    if args.per_band and args.band is not None:
+        p.error("--band is single-band mode only; with --per-band use --bands")
+    if args.band is None:
+        args.band = "r"
+    return args
 
 
 def build_survey_config(args: argparse.Namespace) -> SurveyConfig:
-    """Build the survey config for the requested survey and band."""
+    """Build the survey config for the requested survey and band(s)."""
+    bands = tuple(args.bands) if args.per_band else (args.band,)
     return SURVEY_CONFIGS[args.survey](
         catalog_root=str(args.catalog_root),
         n_src=args.n_src,
         val_start=args.val_start,
         test_start=args.test_start,
-        bands=(args.band,),
+        bands=bands,
         obj=args.obj,
         img=args.img,
     )
@@ -88,33 +114,40 @@ def output_dir(args: argparse.Namespace) -> Path:
     if args.output_dir is not None:
         return args.output_dir
     now = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return Path("runs") / f"constant_magerr_{args.survey}_{args.band}_{args.obj}_{args.img}_{now}"
+    bands = args.bands if args.per_band else args.band
+    return Path("runs") / f"constant_magerr_{args.survey}_{bands}_{args.obj}_{args.img}_{now}"
 
 
 def print_fitted_params(model_path: Path) -> None:
-    """Load the trained model and print its single fitted parameter."""
+    """Load the trained model and print its fitted magnitude error(s)."""
     model = torch.load(model_path, weights_only=False, map_location="cpu")
-    centi_mag = float(model.addition_centi_mag_err.item())
+    centi_mags = model.addition_centi_mag_err.detach().flatten().tolist()
+    labels = getattr(model, "bands", None) or [""] * len(centi_mags)
     print("### fitted parameters:")
-    print(f"    addition_centi_mag_err = {centi_mag:.6g}  ({1e-2 * centi_mag:.6g} mag)")
+    for label, centi_mag in zip(labels, centi_mags, strict=True):
+        name = f"addition_centi_mag_err[{label}]" if label else "addition_centi_mag_err"
+        print(f"    {name} = {centi_mag:.6g}  ({1e-2 * centi_mag:.6g} mag)")
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Train ConstantMagErrModel and report the fitted magnitude error."""
+    """Train the constant mag-err model and report the fitted magnitude error(s)."""
     args = parse_args(argv)
 
-    model_path = run_rubin_dp_constant_magerr(
-        band=args.band,
-        non_extended_only=args.non_extended_only,
-        output_dir=output_dir(args),
-        loss_fn=epps_pulley_whiten_loss(lmbd=2.0, soft=20.0, kind="accum"),
-        val_losses={
+    common = {
+        "non_extended_only": args.non_extended_only,
+        "output_dir": output_dir(args),
+        "loss_fn": epps_pulley_whiten_loss(lmbd=2.0, soft=20.0, kind="accum"),
+        "val_losses": {
             "Total Soften KL": kl_divergence_whiten_loss(soft=20.0, kind="accum", lmbd=None),
             "Total Soften -ln(p_chi2)": minus_ln_chi2_prob_loss(soft=20.0, kind="accum", lmbd=None),
         },
-        survey_config=build_survey_config(args),
-        training_config=build_training_config(args),
-    )
+        "survey_config": build_survey_config(args),
+        "training_config": build_training_config(args),
+    }
+    if args.per_band:
+        model_path = run_rubin_dp_per_band_constant_magerr(**common)
+    else:
+        model_path = run_rubin_dp_constant_magerr(band=args.band, **common)
     print(f"### Trained model saved to {model_path}")
     print_fitted_params(model_path)
     print("### DONE")

@@ -7,6 +7,7 @@ from uncle_val.learning.models.magerr import (
     LinearMagErrModel,
     MagErrModel,
     MLPMagErrModel,
+    PerBandConstantMagErrModel,
 )
 
 __all__ = [
@@ -20,6 +21,7 @@ __all__ = [
     "MLPModel",
     "FluxErrModel",
     "FluxErrPolyModel",
+    "PerBandConstantMagErrModel",
     "UncleModel",
     "UncleScaler",
 ]

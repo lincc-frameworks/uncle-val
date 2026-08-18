@@ -82,6 +82,48 @@ class ConstantMagErrModel(MagErrModel):
         return self.addition_centi_mag_err
 
 
+class PerBandConstantMagErrModel(MagErrModel):
+    """Uncle function adds a per-band constant systematic magnitude error in quadrature
+
+    One trainable systematic magnitude error per passband, picked out with the
+    one-hot ``is_<band>_band`` columns of the multi-band catalogs. For a given
+    observation the systematic error is
+
+        sum_b(addition_centi_mag_err[b] * is_b_band)
+
+    so exactly one parameter contributes per observation.
+
+    Parameters
+    ----------
+    input_names : list of str
+        Names of input dimensions. Must include a flux column (``'flux'`` or
+        ``'x'``), an error column (``'err'``), and ``is_<band>_band`` for every
+        band in ``bands``.
+    bands : sequence of str
+        Bands to fit, one trainable parameter each, in this order.
+    """
+
+    def __init__(self, input_names: Sequence[str], bands: Sequence[str]) -> None:
+        super().__init__(input_names=input_names)
+
+        self.bands = list(bands)
+        band_columns = []
+        for band in self.bands:
+            column = f"is_{band}_band"
+            if column not in self.input_names:
+                raise ValueError(f"input_names must include {column!r}, got {self.input_names}")
+            band_columns.append(self.input_names.index(column))
+        # A buffer, not a plain list, so indexing traces to a gather for ONNX
+        # and follows the model across .to(device).
+        self.register_buffer("band_columns", torch.tensor(band_columns))
+
+        self.addition_centi_mag_err = torch.nn.Parameter(torch.ones(len(self.bands)))
+
+    def module(self, inputs: torch.Tensor) -> torch.Tensor:
+        """Per-band trainable systematic magnitude error addition in centi-magnitudes."""
+        return torch.sum(inputs[..., self.band_columns] * self.addition_centi_mag_err, dim=-1, keepdim=True)
+
+
 class LinearMagErrModel(MagErrModel):
     """Linear model for the systematic magnitude error
 

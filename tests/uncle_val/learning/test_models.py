@@ -22,6 +22,7 @@ from uncle_val.learning.models import (
     LinearModel,
     MLPMagErrModel,
     MLPModel,
+    PerBandConstantMagErrModel,
 )
 from uncle_val.learning.training import train_step
 
@@ -236,6 +237,49 @@ def test_magerr_model_save_onnx(model, tmp_path):
     assert path.exists()
 
 
+def test_per_band_constant_magerr_model_bands_and_shape():
+    """PerBandConstantMagErrModel has one trainable parameter per band"""
+    model = PerBandConstantMagErrModel(["x", "err", "is_g_band", "is_r_band"], bands="gr")
+    assert model.bands == ["g", "r"]
+    assert model.addition_centi_mag_err.shape == (2,)
+
+
+def test_per_band_constant_magerr_model_requires_band_columns():
+    """A band without its is_<band>_band column is an error, not a silent no-op"""
+    with pytest.raises(ValueError, match="is_r_band"):
+        PerBandConstantMagErrModel(["x", "err", "is_g_band"], bands="gr")
+
+
+@pytest.mark.parametrize(("band_idx", "centi_mag"), [(0, 1.0), (1, 3.0)])
+def test_per_band_constant_magerr_model_selects_its_band(band_idx, centi_mag):
+    """Each one-hot band gets exactly the constant model's u for that band's parameter"""
+    per_band = PerBandConstantMagErrModel(["x", "err", "is_g_band", "is_r_band"], bands="gr")
+    with torch.no_grad():
+        per_band.addition_centi_mag_err.copy_(torch.tensor([1.0, 3.0]))
+
+    reference = ConstantMagErrModel(input_names=["x", "err"])
+    with torch.no_grad():
+        reference.addition_centi_mag_err.fill_(centi_mag)
+
+    flux_err = torch.tensor([[1e3], [5e3], [2e4]])
+    flux = torch.tensor([[1e5], [1e6], [1e4]])
+    one_hot = torch.zeros(3, 2)
+    one_hot[:, band_idx] = 1.0
+
+    expected = reference(torch.cat([flux, flux_err], dim=-1))
+    actual = per_band(torch.cat([flux, flux_err, one_hot], dim=-1))
+    assert_allclose(actual.detach().numpy(), expected.detach().numpy(), rtol=1e-6)
+
+
+def test_per_band_constant_magerr_model_save_onnx(tmp_path):
+    """PerBandConstantMagErrModel is exportable to ONNX, as done at the end of training"""
+    model = PerBandConstantMagErrModel(["x", "err", "is_g_band", "is_r_band"], bands="gr")
+    model.eval()
+    path = tmp_path / "PerBandConstantMagErrModel.onnx"
+    model.save_onnx(path)
+    assert path.exists()
+
+
 @pytest.mark.parametrize(
     "loss_prod", [minus_ln_chi2_prob_loss, kl_divergence_whiten_loss, epps_pulley_whiten_loss]
 )
@@ -291,6 +335,68 @@ def test_constant_magerr_model_many_objects(loss_prod):
 
     model.eval()
     assert_allclose(model.addition_centi_mag_err.item(), target_centi_mag_err, rtol=0.1)
+
+
+@pytest.mark.long
+def test_per_band_constant_magerr_model_fits_only_its_own_band():
+    """The band present in the data is fitted; the absent band keeps its initial value"""
+    torch.manual_seed(42)
+    np.random.seed(42)
+    random.seed(42)
+    torch.use_deterministic_algorithms(True)
+
+    rng = np.random.default_rng(42)
+
+    n_obj = 1000
+    n_src_training = 30
+    target_centi_mag_err = 2.0  # 2 centimag = 0.02 mag
+
+    n_src = rng.integers(n_src_training, 150, size=n_obj)
+
+    def u_func(flux, flux_err):
+        mag_err = 2.5 / np.log(10) * flux_err / flux
+        new_mag_err = np.hypot(mag_err, 0.02)
+        new_flux_err = np.log(10) / 2.5 * flux * new_mag_err
+        return new_flux_err / flux_err
+
+    catalog = fake_non_variable_lcs(n_obj=n_obj, n_src=n_src, err=None, u=u_func, rng=rng)
+
+    def add_band_flags(df):
+        """Make every light curve a g-band one, leaving r band with no data.
+
+        One-hot band flags are object-level columns, as in rubin_dp catalogs;
+        the dataset broadcasts them over each light curve's observations.
+        """
+        df["is_g_band"] = True
+        df["is_r_band"] = False
+        return df
+
+    catalog = catalog.map_partitions(add_band_flags)
+
+    train_dataset = LSDBIterableDataset(
+        catalog=catalog,
+        client=None,
+        columns=["x", "err", "is_g_band", "is_r_band"],
+        batch_lc=2,
+        n_src=n_src_training,
+        partitions_per_chunk=12,
+        hash_range=(0.0, 0.5),
+        loop=True,
+        seed=rng.integers(1 << 63),
+    )
+
+    model = PerBandConstantMagErrModel(["x", "err", "is_g_band", "is_r_band"], bands="gr")
+    initial_r = model.addition_centi_mag_err[1].item()
+    model.train()
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    loss = minus_ln_chi2_prob_loss(lmbd=None, soft=None, kind="accum")
+
+    for _i_step, batch in zip(range(10_000), train_dataset, strict=False):
+        train_step(model=model, optimizer=optimizer, loss=loss, batch=batch)
+
+    model.eval()
+    assert_allclose(model.addition_centi_mag_err[0].item(), target_centi_mag_err, rtol=0.1)
+    assert model.addition_centi_mag_err[1].item() == initial_r
 
 
 def _make_magerr_catalog_and_datasets(*, rng, n_obj, n_src_training, systematic_mag_err):

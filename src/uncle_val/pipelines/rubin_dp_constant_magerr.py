@@ -55,16 +55,24 @@ def run_rubin_dp_constant_magerr(
 
     if non_extended_only:
         catalog = catalog.query("extendedness == 0.0")
-    catalog = catalog.map_partitions(lambda df: df[["id", "lc.x", "lc.err"]])
 
-    model = ConstantMagErrModel(["x", "err"]).to(device=training_config.compute_config.device)
+    # On difference images "x" is the difference flux, consistent with zero for a
+    # non-variable object, so the systematic is referenced to the science flux.
+    source_flux = "psfFlux" if survey_config.img == "diff" else None
+    columns = ["x", "err"] + ([source_flux] if source_flux is not None else [])
+    keep_columns = ["id"] + [f"lc.{column}" for column in columns]
+    catalog = catalog.map_partitions(lambda df: df[keep_columns])
+
+    model = ConstantMagErrModel(columns, source_flux=source_flux).to(
+        device=training_config.compute_config.device
+    )
 
     if val_losses is None:
         val_losses = {}
 
     return training_loop(
         catalog=catalog,
-        columns=None,
+        columns=columns,
         model=model,
         loss_fn=loss_fn,
         val_losses=val_losses,

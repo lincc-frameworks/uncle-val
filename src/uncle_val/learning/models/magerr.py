@@ -56,7 +56,8 @@ class MagErrModel(BaseUncleModel):
         )
         flux_err = inputs[..., self.err_column]
         mag_err = fluxerr2magerr(flux=flux, flux_err=flux_err)
-        new_mag_err = torch.hypot(mag_err, systematic_mag_err)
+        # torch.hypot() has no ONNX conversion
+        new_mag_err = torch.sqrt(mag_err**2 + systematic_mag_err**2)
         new_flux_err = magerr2fluxerr(flux=flux, mag_err=new_mag_err)
         u = new_flux_err / flux_err
         return u[..., None]

@@ -221,6 +221,22 @@ def test_magerr_model_forward(model):
 
 
 @pytest.mark.parametrize(
+    "model",
+    [
+        ConstantMagErrModel(input_names=["x", "err"]),
+        LinearMagErrModel(input_names=["x", "err"]),
+        MLPMagErrModel(input_names=["x", "err"], d_middle=(8, 8)),
+    ],
+)
+def test_magerr_model_save_onnx(model, tmp_path):
+    """MagErr models are exportable to ONNX, as done at the end of training"""
+    model.eval()
+    path = tmp_path / f"{type(model).__name__}.onnx"
+    model.save_onnx(path)
+    assert path.exists()
+
+
+@pytest.mark.parametrize(
     "loss_prod", [minus_ln_chi2_prob_loss, kl_divergence_whiten_loss, epps_pulley_whiten_loss]
 )
 @pytest.mark.long

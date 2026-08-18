@@ -1,0 +1,14 @@
+{
+  "compute_config": {
+    "n_workers": 4,
+    "device": "mps"
+  },
+  "n_lcs": 2000000,
+  "train_batch_size": 1024,
+  "val_batch_size": 2048,
+  "lr": 0.01,
+  "max_val_size": 65536,
+  "snapshot_factor": 2.0,
+  "start_tfboard": false,
+  "run_feature_importance": false
+}

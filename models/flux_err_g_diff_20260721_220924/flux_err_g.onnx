@@ -1,0 +1,305 @@
+
+pytorch2.12.1:úk
+ı
+input
+val_0selectnode_select"Gather*
+axis†JV
+	namespaceI: uncle_val.learning.models.flux_err.FluxErrModel/select: aten.select.intJh
+pkg.torch.onnx.class_hierarchyF['uncle_val.learning.models.flux_err.FluxErrModel', 'aten.select.int']Jà
+pkg.torch.onnx.fx_noden%select : [num_users=1] = call_function[target=torch.ops.aten.select.int](args = (%inputs, 1, 0), kwargs = {})J,
+pkg.torch.onnx.name_scopes['', 'select']Jø
+pkg.torch.onnx.stack_trace†File "/Users/hombit/projects/lincc-frameworks/uncle-val/src/uncle_val/learning/models/flux_err.py", line 74, in forward
+    flux = inputs[..., self.flux_column]
+˝
+input
+val_1select_1node_select_1"Gather*
+axis†JX
+	namespaceK: uncle_val.learning.models.flux_err.FluxErrModel/select_1: aten.select.intJh
+pkg.torch.onnx.class_hierarchyF['uncle_val.learning.models.flux_err.FluxErrModel', 'aten.select.int']Jä
+pkg.torch.onnx.fx_nodep%select_1 : [num_users=2] = call_function[target=torch.ops.aten.select.int](args = (%inputs, 1, 1), kwargs = {})J.
+pkg.torch.onnx.name_scopes['', 'select_1']JΩ
+pkg.torch.onnx.stack_traceûFile "/Users/hombit/projects/lincc-frameworks/uncle-val/src/uncle_val/learning/models/flux_err.py", line 75, in forward
+    err = inputs[..., self.err_column]
+Ü
+select
+exp_3divnode_div"DivJS
+	namespaceF: uncle_val.learning.models.flux_err.FluxErrModel/div: aten.div.TensorJh
+pkg.torch.onnx.class_hierarchyF['uncle_val.learning.models.flux_err.FluxErrModel', 'aten.div.Tensor']Já
+pkg.torch.onnx.fx_nodem%div : [num_users=1] = call_function[target=torch.ops.aten.div.Tensor](args = (%select, %exp_3), kwargs = {})J)
+pkg.torch.onnx.name_scopes['', 'div']JÏ
+pkg.torch.onnx.stack_traceÕFile "/Users/hombit/projects/lincc-frameworks/uncle-val/src/uncle_val/learning/models/flux_err.py", line 82, in forward
+    flux_eff = flux_cut * (1.0 + torch.nn.functional.softplus(flux / flux_cut - 1.0))
+á
+div
+val_3sub_3
+node_sub_3"SubJU
+	namespaceH: uncle_val.learning.models.flux_err.FluxErrModel/sub_3: aten.sub.TensorJh
+pkg.torch.onnx.class_hierarchyF['uncle_val.learning.models.flux_err.FluxErrModel', 'aten.sub.Tensor']JÉ
+pkg.torch.onnx.fx_nodei%sub_3 : [num_users=1] = call_function[target=torch.ops.aten.sub.Tensor](args = (%div, 1.0), kwargs = {})J+
+pkg.torch.onnx.name_scopes['', 'sub_3']JÏ
+pkg.torch.onnx.stack_traceÕFile "/Users/hombit/projects/lincc-frameworks/uncle-val/src/uncle_val/learning/models/flux_err.py", line 82, in forward
+    flux_eff = flux_cut * (1.0 + torch.nn.functional.softplus(flux / flux_cut - 1.0))
+ñ
+sub_3tmpn3"SoftplusJ^
+	namespaceQ: uncle_val.learning.models.flux_err.FluxErrModel/softplus: aten.softplus.defaultJn
+pkg.torch.onnx.class_hierarchyL['uncle_val.learning.models.flux_err.FluxErrModel', 'aten.softplus.default']Jä
+pkg.torch.onnx.fx_nodep%softplus : [num_users=1] = call_function[target=torch.ops.aten.softplus.default](args = (%sub_3,), kwargs = {})J.
+pkg.torch.onnx.name_scopes['', 'softplus']JÏ
+pkg.torch.onnx.stack_traceÕFile "/Users/hombit/projects/lincc-frameworks/uncle-val/src/uncle_val/learning/models/flux_err.py", line 82, in forward
+    flux_eff = flux_cut * (1.0 + torch.nn.functional.softplus(flux / flux_cut - 1.0))
+ß
+sub_3
+threshold_casttmp_1n9"GreaterJ^
+	namespaceQ: uncle_val.learning.models.flux_err.FluxErrModel/softplus: aten.softplus.defaultJn
+pkg.torch.onnx.class_hierarchyL['uncle_val.learning.models.flux_err.FluxErrModel', 'aten.softplus.default']Jä
+pkg.torch.onnx.fx_nodep%softplus : [num_users=1] = call_function[target=torch.ops.aten.softplus.default](args = (%sub_3,), kwargs = {})J.
+pkg.torch.onnx.name_scopes['', 'softplus']JÏ
+pkg.torch.onnx.stack_traceÕFile "/Users/hombit/projects/lincc-frameworks/uncle-val/src/uncle_val/learning/models/flux_err.py", line 82, in forward
+    flux_eff = flux_cut * (1.0 + torch.nn.functional.softplus(flux / flux_cut - 1.0))
+•
+tmp_1
+sub_3
+tmpsoftplusn10"WhereJ^
+	namespaceQ: uncle_val.learning.models.flux_err.FluxErrModel/softplus: aten.softplus.defaultJn
+pkg.torch.onnx.class_hierarchyL['uncle_val.learning.models.flux_err.FluxErrModel', 'aten.softplus.default']Jä
+pkg.torch.onnx.fx_nodep%softplus : [num_users=1] = call_function[target=torch.ops.aten.softplus.default](args = (%sub_3,), kwargs = {})J.
+pkg.torch.onnx.name_scopes['', 'softplus']JÏ
+pkg.torch.onnx.stack_traceÕFile "/Users/hombit/projects/lincc-frameworks/uncle-val/src/uncle_val/learning/models/flux_err.py", line 82, in forward
+    flux_eff = flux_cut * (1.0 + torch.nn.functional.softplus(flux / flux_cut - 1.0))
+ñ
+softplus
+val_3add_10node_add_10"AddJV
+	namespaceI: uncle_val.learning.models.flux_err.FluxErrModel/add_10: aten.add.TensorJh
+pkg.torch.onnx.class_hierarchyF['uncle_val.learning.models.flux_err.FluxErrModel', 'aten.add.Tensor']Jâ
+pkg.torch.onnx.fx_nodeo%add_10 : [num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%softplus, 1.0), kwargs = {})J,
+pkg.torch.onnx.name_scopes['', 'add_10']JÏ
+pkg.torch.onnx.stack_traceÕFile "/Users/hombit/projects/lincc-frameworks/uncle-val/src/uncle_val/learning/models/flux_err.py", line 82, in forward
+    flux_eff = flux_cut * (1.0 + torch.nn.functional.softplus(flux / flux_cut - 1.0))
+ê
+exp_3
+add_10mul_9
+node_mul_9"MulJU
+	namespaceH: uncle_val.learning.models.flux_err.FluxErrModel/mul_9: aten.mul.TensorJh
+pkg.torch.onnx.class_hierarchyF['uncle_val.learning.models.flux_err.FluxErrModel', 'aten.mul.Tensor']Jâ
+pkg.torch.onnx.fx_nodeo%mul_9 : [num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%exp_3, %add_10), kwargs = {})J+
+pkg.torch.onnx.name_scopes['', 'mul_9']JÏ
+pkg.torch.onnx.stack_traceÕFile "/Users/hombit/projects/lincc-frameworks/uncle-val/src/uncle_val/learning/models/flux_err.py", line 82, in forward
+    flux_eff = flux_cut * (1.0 + torch.nn.functional.softplus(flux / flux_cut - 1.0))
+ï
+exp
+select_1mul_11node_mul_11"MulJV
+	namespaceI: uncle_val.learning.models.flux_err.FluxErrModel/mul_11: aten.mul.TensorJh
+pkg.torch.onnx.class_hierarchyF['uncle_val.learning.models.flux_err.FluxErrModel', 'aten.mul.Tensor']Jä
+pkg.torch.onnx.fx_nodep%mul_11 : [num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%exp, %select_1), kwargs = {})J,
+pkg.torch.onnx.name_scopes['', 'mul_11']JÏ
+pkg.torch.onnx.stack_traceÕFile "/Users/hombit/projects/lincc-frameworks/uncle-val/src/uncle_val/learning/models/flux_err.py", line 84, in forward
+    corr_var = torch.square(u0 * err) + torch.square(b * flux_eff) + torch.square(a0)
+†
+mul_11
+val_4pow_1
+node_pow_1"PowJ\
+	namespaceO: uncle_val.learning.models.flux_err.FluxErrModel/pow_1: aten.pow.Tensor_ScalarJo
+pkg.torch.onnx.class_hierarchyM['uncle_val.learning.models.flux_err.FluxErrModel', 'aten.pow.Tensor_Scalar']Jã
+pkg.torch.onnx.fx_nodeq%pow_1 : [num_users=1] = call_function[target=torch.ops.aten.pow.Tensor_Scalar](args = (%mul_11, 2), kwargs = {})J+
+pkg.torch.onnx.name_scopes['', 'pow_1']JÏ
+pkg.torch.onnx.stack_traceÕFile "/Users/hombit/projects/lincc-frameworks/uncle-val/src/uncle_val/learning/models/flux_err.py", line 84, in forward
+    corr_var = torch.square(u0 * err) + torch.square(b * flux_eff) + torch.square(a0)
+ì
+exp_1
+mul_9mul_14node_mul_14"MulJV
+	namespaceI: uncle_val.learning.models.flux_err.FluxErrModel/mul_14: aten.mul.TensorJh
+pkg.torch.onnx.class_hierarchyF['uncle_val.learning.models.flux_err.FluxErrModel', 'aten.mul.Tensor']Jâ
+pkg.torch.onnx.fx_nodeo%mul_14 : [num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%exp_1, %mul_9), kwargs = {})J,
+pkg.torch.onnx.name_scopes['', 'mul_14']JÏ
+pkg.torch.onnx.stack_traceÕFile "/Users/hombit/projects/lincc-frameworks/uncle-val/src/uncle_val/learning/models/flux_err.py", line 84, in forward
+    corr_var = torch.square(u0 * err) + torch.square(b * flux_eff) + torch.square(a0)
+†
+mul_14
+val_4pow_2
+node_pow_2"PowJ\
+	namespaceO: uncle_val.learning.models.flux_err.FluxErrModel/pow_2: aten.pow.Tensor_ScalarJo
+pkg.torch.onnx.class_hierarchyM['uncle_val.learning.models.flux_err.FluxErrModel', 'aten.pow.Tensor_Scalar']Jã
+pkg.torch.onnx.fx_nodeq%pow_2 : [num_users=1] = call_function[target=torch.ops.aten.pow.Tensor_Scalar](args = (%mul_14, 2), kwargs = {})J+
+pkg.torch.onnx.name_scopes['', 'pow_2']JÏ
+pkg.torch.onnx.stack_traceÕFile "/Users/hombit/projects/lincc-frameworks/uncle-val/src/uncle_val/learning/models/flux_err.py", line 84, in forward
+    corr_var = torch.square(u0 * err) + torch.square(b * flux_eff) + torch.square(a0)
+ì
+pow_1
+pow_2add_23node_add_23"AddJV
+	namespaceI: uncle_val.learning.models.flux_err.FluxErrModel/add_23: aten.add.TensorJh
+pkg.torch.onnx.class_hierarchyF['uncle_val.learning.models.flux_err.FluxErrModel', 'aten.add.Tensor']Jâ
+pkg.torch.onnx.fx_nodeo%add_23 : [num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%pow_1, %pow_2), kwargs = {})J,
+pkg.torch.onnx.name_scopes['', 'add_23']JÏ
+pkg.torch.onnx.stack_traceÕFile "/Users/hombit/projects/lincc-frameworks/uncle-val/src/uncle_val/learning/models/flux_err.py", line 84, in forward
+    corr_var = torch.square(u0 * err) + torch.square(b * flux_eff) + torch.square(a0)
+ï
+add_23
+pow_3add_26node_add_26"AddJV
+	namespaceI: uncle_val.learning.models.flux_err.FluxErrModel/add_26: aten.add.TensorJh
+pkg.torch.onnx.class_hierarchyF['uncle_val.learning.models.flux_err.FluxErrModel', 'aten.add.Tensor']Jä
+pkg.torch.onnx.fx_nodep%add_26 : [num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%add_23, %pow_3), kwargs = {})J,
+pkg.torch.onnx.name_scopes['', 'add_26']JÏ
+pkg.torch.onnx.stack_traceÕFile "/Users/hombit/projects/lincc-frameworks/uncle-val/src/uncle_val/learning/models/flux_err.py", line 84, in forward
+    corr_var = torch.square(u0 * err) + torch.square(b * flux_eff) + torch.square(a0)
+—
+add_26sqrt	node_sqrt"SqrtJV
+	namespaceI: uncle_val.learning.models.flux_err.FluxErrModel/sqrt: aten.sqrt.defaultJj
+pkg.torch.onnx.class_hierarchyH['uncle_val.learning.models.flux_err.FluxErrModel', 'aten.sqrt.default']JÉ
+pkg.torch.onnx.fx_nodei%sqrt : [num_users=1] = call_function[target=torch.ops.aten.sqrt.default](args = (%add_26,), kwargs = {})J*
+pkg.torch.onnx.name_scopes['', 'sqrt']Jπ
+pkg.torch.onnx.stack_traceöFile "/Users/hombit/projects/lincc-frameworks/uncle-val/src/uncle_val/learning/models/flux_err.py", line 85, in forward
+    u = torch.sqrt(corr_var) / err
+ﬂ
+sqrt
+select_1div_1
+node_div_1"DivJU
+	namespaceH: uncle_val.learning.models.flux_err.FluxErrModel/div_1: aten.div.TensorJh
+pkg.torch.onnx.class_hierarchyF['uncle_val.learning.models.flux_err.FluxErrModel', 'aten.div.Tensor']Jä
+pkg.torch.onnx.fx_nodep%div_1 : [num_users=1] = call_function[target=torch.ops.aten.div.Tensor](args = (%sqrt, %select_1), kwargs = {})J+
+pkg.torch.onnx.name_scopes['', 'div_1']Jπ
+pkg.torch.onnx.stack_traceöFile "/Users/hombit/projects/lincc-frameworks/uncle-val/src/uncle_val/learning/models/flux_err.py", line 85, in forward
+    u = torch.sqrt(corr_var) / err
+˜
+div_1
+val_7outputnode_unsqueeze"	UnsqueezeJ`
+	namespaceS: uncle_val.learning.models.flux_err.FluxErrModel/unsqueeze: aten.unsqueeze.defaultJo
+pkg.torch.onnx.class_hierarchyM['uncle_val.learning.models.flux_err.FluxErrModel', 'aten.unsqueeze.default']Jé
+pkg.torch.onnx.fx_nodet%unsqueeze : [num_users=1] = call_function[target=torch.ops.aten.unsqueeze.default](args = (%div_1, 1), kwargs = {})J/
+pkg.torch.onnx.name_scopes['', 'unsqueeze']JÆ
+pkg.torch.onnx.stack_traceèFile "/Users/hombit/projects/lincc-frameworks/uncle-val/src/uncle_val/learning/models/flux_err.py", line 86, in forward
+    return u[..., None]
+main_graph*BexpJŒãí?*Bexp_1Jw◊∏;*Bexp_3J5£D*Bthreshold_castJ  †A*Bpow_3J-ß:;*Bval_0J        *Bval_1J       *Bval_3J  Ä?*Bval_4J   @*Bval_7J       ZÃ
+input
+
+
+batch_size
+"=
+/pkg.torch.export.graph_signature.InputSpec.kind
+USER_INPUT"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"+
+!pkg.torch.onnx.original_node_nameinputsbì
+output
+
+
+batch_size
+"?
+0pkg.torch.export.graph_signature.OutputSpec.kindUSER_OUTPUT".
+!pkg.torch.onnx.original_node_name	unsqueezejE
+exp
+
+
+"2
+$pkg.onnxscript.optimizer.folded_from
+['log_u0']jF
+exp_1
+
+
+"1
+$pkg.onnxscript.optimizer.folded_from	['log_b']ja
+exp_3
+
+
+"L
+$pkg.onnxscript.optimizer.folded_from$['log10_flux_cut', 'mul_4', 'val_2']jO
+threshold_cast
+ "5
+$pkg.onnxscript.optimizer.folded_from['threshold']jY
+pow_3
+
+
+"D
+$pkg.onnxscript.optimizer.folded_from['exp_2', 'log_a0', 'val_6']j
+val_0
+ j
+val_1
+ j
+val_3
+ j
+val_4
+ j
+val_7
+
+
+j
+select
+
+
+batch_sizej 
+select_1
+
+
+batch_sizej
+div
+
+
+batch_sizej
+sub_3
+
+
+batch_sizej
+tmp
+
+
+batch_sizej
+tmp_1
+	
+
+batch_sizej 
+softplus
+
+
+batch_sizej
+add_10
+
+
+batch_sizej
+mul_9
+
+
+batch_sizej
+mul_11
+
+
+batch_sizej
+pow_1
+
+
+batch_sizej
+mul_14
+
+
+batch_sizej
+pow_2
+
+
+batch_sizej
+add_23
+
+
+batch_sizej
+add_26
+
+
+batch_sizej
+sqrt
+
+
+batch_sizej
+div_1
+
+
+batch_sizeÇí
+0pkg.torch.export.ExportedProgram.graph_signature›
+# inputs
+p_log_u0: PARAMETER target='log_u0'
+p_log_b: PARAMETER target='log_b'
+p_log_a0: PARAMETER target='log_a0'
+p_log10_flux_cut: PARAMETER target='log10_flux_cut'
+inputs: USER_INPUT
+
+# outputs
+unsqueeze: USER_OUTPUT
+ÇJ
+2pkg.torch.export.ExportedProgram.range_constraints{s85: VR[1, int_oo]}B
+ r
+input_names["x", "err"]

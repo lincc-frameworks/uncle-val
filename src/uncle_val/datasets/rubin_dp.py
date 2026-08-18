@@ -394,6 +394,7 @@ def rubin_dp_catalog_multi_band(
     mode: Literal["forced"],
     variability_detectors: Sequence[Callable] | Literal["all"] = "all",
     pre_filter_partition: Callable[[NestedFrame], NestedFrame] | None = None,
+    ccd_visit_cols: Sequence[str] | None = ("expTime", "seeing", "skyBg"),
 ):
     """Rubin DP1 LSDB catalog, bands are one-hot encoded.
 
@@ -438,6 +439,14 @@ def rubin_dp_catalog_multi_band(
         Optional function applied to each catalog partition before any other
         processing. Receives a ``NestedFrame`` and returns a filtered
         ``NestedFrame``.
+    ccd_visit_cols : sequence of str or None
+        Columns to join in from the CCD Visit table (in addition to the
+        ``visitId``/``detectorId`` join keys), added as ``lc.<col>`` fields.
+        Defaults to ``("expTime", "seeing", "skyBg")``. If empty or ``None``,
+        the CCD Visit table is not read or joined at all, and ``visit``/
+        ``detector`` are not requested from the source catalog either --
+        skip this when the model being trained doesn't use those features,
+        to avoid the join's I/O and merge cost.
 
     Returns
     -------
@@ -452,6 +461,8 @@ def rubin_dp_catalog_multi_band(
         raise ValueError(f"Some of the given bands ({bands}) are not in {LSDB_BANDS}")
     bands = [band for band in LSDB_BANDS if band in input_bands]
 
+    read_visit_cols = bool(ccd_visit_cols)
+
     catalog, col_names = _open_catalog(
         root,
         bands=bands,
@@ -459,7 +470,7 @@ def rubin_dp_catalog_multi_band(
         img=img,
         phot=phot,
         mode=mode,
-        read_visit_cols=True,
+        read_visit_cols=read_visit_cols,
     )
 
     # DiaObjects lack object-level psfMag/extendedness; derive them before the
@@ -474,8 +485,12 @@ def rubin_dp_catalog_multi_band(
         variability_detectors = None
     var_detector = get_combined_variability_detector(variability_detectors)
 
-    ccd_visits_path = root / "public_parquet" / "ccd_visit_prepared.feather"
-    ccd_visits_cols = ["visitId", "detectorId", "expTime", "seeing", "skyBg"]
+    if read_visit_cols:
+        ccd_visits_path = root / "public_parquet" / "ccd_visit_prepared.feather"
+        ccd_visits_cols = ["visitId", "detectorId"] + list(ccd_visit_cols)
+    else:
+        ccd_visits_path = None
+        ccd_visits_cols = None
 
     mapped_catalog = catalog.map_partitions(
         _process_partition_multi_band,

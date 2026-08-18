@@ -74,6 +74,11 @@ def main():
     p.add_argument("--device", default="cpu")
     p.add_argument("--subsample-partitions", type=float, default=None)
     p.add_argument(
+        "--non-extended-only",
+        action="store_true",
+        help="Keep only point sources, extendedness == 0. Default: keep all objects.",
+    )
+    p.add_argument(
         "--output-dir",
         type=Path,
         default=None,
@@ -119,6 +124,9 @@ def main():
 
     output_dir = args.output_dir or model_dir_for_config / "plots" / f"model_{args.split}"
 
+    pre_filter_partition = (lambda df: df.query("extendedness == 0.0")) if args.non_extended_only else None
+    selection_label = "extendedness == 0" if args.non_extended_only else None
+
     compute_config = ComputeConfig(n_workers=args.n_workers, device=args.device)
     common = dict(
         survey_config=survey_config,
@@ -128,6 +136,8 @@ def main():
         split=split,
         bands=bands,
         subsample_partitions=args.subsample_partitions,
+        pre_filter_partition=pre_filter_partition,
+        selection_label=selection_label,
     )
 
     whiten_output = output_dir / "whiten_density.pdf"

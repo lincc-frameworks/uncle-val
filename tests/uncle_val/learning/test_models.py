@@ -280,6 +280,44 @@ def test_per_band_constant_magerr_model_save_onnx(tmp_path):
     assert path.exists()
 
 
+def test_magerr_model_rejects_missing_source_flux():
+    """A source_flux column absent from input_names is an error, not a silent fallback"""
+    with pytest.raises(ValueError, match="psfFlux"):
+        ConstantMagErrModel(["x", "err"], source_flux="psfFlux")
+
+
+def test_magerr_model_source_flux_is_a_no_op_when_it_equals_the_flux_column():
+    """Referencing to a column holding the same values reproduces the default"""
+    default = ConstantMagErrModel(["x", "err"])
+    referenced = ConstantMagErrModel(["x", "err", "psfFlux"], source_flux="psfFlux")
+
+    flux = torch.tensor([[1e5], [1e4]])
+    flux_err = torch.tensor([[1e3], [5e2]])
+    expected = default(torch.cat([flux, flux_err], dim=-1))
+    actual = referenced(torch.cat([flux, flux_err, flux], dim=-1))
+    assert_allclose(actual.detach().numpy(), expected.detach().numpy(), rtol=1e-6)
+
+
+def test_magerr_model_source_flux_rescues_difference_photometry():
+    """With a near-zero difference flux, u is 1 unless referenced to the science flux
+
+    This is the difference-image case: ``x`` is the difference flux, which is
+    consistent with zero for a non-variable object, so a constant magnitude
+    error added in quadrature to its enormous magnitude error does nothing.
+    """
+    science_flux = 2.3e5  # ~18 mag
+    diff_flux = 0.0
+    flux_err = 5.8e2
+
+    on_diff_flux = ConstantMagErrModel(["x", "err"])
+    u_diff = on_diff_flux(torch.tensor([[diff_flux, flux_err]])).item()
+    assert u_diff == pytest.approx(1.0, abs=1e-6), "expected the systematic to vanish"
+
+    on_science_flux = ConstantMagErrModel(["x", "err", "psfFlux"], source_flux="psfFlux")
+    u_science = on_science_flux(torch.tensor([[diff_flux, flux_err, science_flux]])).item()
+    assert u_science > 3.0, f"expected a large correction at 18 mag, got {u_science}"
+
+
 @pytest.mark.parametrize(
     "loss_prod", [minus_ln_chi2_prob_loss, kl_divergence_whiten_loss, epps_pulley_whiten_loss]
 )

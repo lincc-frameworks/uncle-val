@@ -61,16 +61,22 @@ def run_rubin_dp_per_band_constant_magerr(
     if non_extended_only:
         catalog = catalog.query("extendedness == 0.0")
 
-    band_columns = [f"is_{band}_band" for band in bands]
-    keep_columns = ["id", "lc.x", "lc.err"] + band_columns
-    catalog = catalog.map_partitions(lambda df: df[keep_columns])
+    # On difference images "x" is the difference flux, consistent with zero for a
+    # non-variable object, so the systematic is referenced to the science flux.
+    source_flux = "psfFlux" if survey_config.img == "diff" else None
 
+    band_columns = [f"is_{band}_band" for band in bands]
     # The dataset emits nested columns first, so spell the order out rather
     # than relying on columns=None: the model indexes its band parameters by
     # position in input_names.
-    columns = ["x", "err"] + band_columns
+    columns = ["x", "err"] + ([source_flux] if source_flux is not None else [])
+    keep_columns = ["id"] + [f"lc.{column}" for column in columns] + band_columns
+    columns = columns + band_columns
+    catalog = catalog.map_partitions(lambda df: df[keep_columns])
 
-    model = PerBandConstantMagErrModel(columns, bands).to(device=training_config.compute_config.device)
+    model = PerBandConstantMagErrModel(columns, bands, source_flux=source_flux).to(
+        device=training_config.compute_config.device
+    )
 
     if val_losses is None:
         val_losses = {}

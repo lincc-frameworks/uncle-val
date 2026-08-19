@@ -70,7 +70,7 @@ def test_variable_without_client_context():
 
 def test_variable_with_client_context():
     """Test Variable behavior when created and accessed with a client."""
-    with Client(n_workers=2):
+    with Client(n_workers=2, dashboard_address=None):
         value = "client_value"
         var = Variable(value)
 
@@ -90,7 +90,7 @@ def test_variable_error_created_without_accessed_with_client():
     assert var.variable is None
 
     # Try to access within client context
-    with Client(n_workers=2):
+    with Client(n_workers=2, dashboard_address=None):
         with pytest.raises(RuntimeError, match="initialized without a Dask Client context"):
             var.get()
 
@@ -101,7 +101,7 @@ def test_variable_error_created_without_accessed_with_client():
 def test_variable_error_created_with_accessed_without_client():
     """Test error when Variable is created with client but accessed without one."""
     # Create variable within client context
-    with Client(n_workers=2):
+    with Client(n_workers=2, dashboard_address=None):
         var = Variable("value")
         assert var.variable is not None
 
@@ -119,7 +119,7 @@ def test_within_distributed_context():
     assert Variable._within_distributed_context() is False
 
     # With a client
-    with Client(n_workers=2):
+    with Client(n_workers=2, dashboard_address=None):
         assert Variable._within_distributed_context() is True
 
     # After closing client
@@ -144,6 +144,6 @@ def test_variable_with_different_types():
         assert var.get() == value
 
         # Test with client context as well
-        with Client(n_workers=2):
+        with Client(n_workers=2, dashboard_address=None):
             var_with_client = Variable(value)
             assert var_with_client.get() == value

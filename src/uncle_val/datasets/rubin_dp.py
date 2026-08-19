@@ -14,6 +14,16 @@ from uncle_val.variability_detectors import get_combined_variability_detector
 
 LSDB_BANDS = "ugrizy"
 
+# Object magnitudes always read, whichever bands are trained on, so that a
+# g-r colour is available for object selection.
+COLOR_BANDS = ("g", "r")
+
+
+def _add_gr_color(df):
+    """Add the object-level g-r colour, before the per-band magnitudes are dropped."""
+    df["gr_color"] = df["g_psfMag"] - df["r_psfMag"]
+    return df
+
 
 def _one_hot_encode_band(df, dtype: type = bool):
     for lsdb_band in LSDB_BANDS:
@@ -52,7 +62,9 @@ def _process_partition_single_band(
 ):
     # Normalize column names
     df = _rename_columns(df, lc_col=lc_col, id_col=id_col, flux_col=flux_col, flux_err_col=flux_err_col)
+    df = _add_gr_color(df)
     df = df.rename(columns={f"{band}_psfMag": "object_mag", f"{band}_extendedness": "extendedness"})
+    df = df.drop(columns=[col for col in df.columns if col.endswith("_psfMag")])
 
     # Filter by band
     df = df.query(f"lc.band == {band!r}")
@@ -85,10 +97,14 @@ def _split_light_curves_by_band(
         single_band["band"] = band
 
         single_band["object_mag"] = single_band[f"{band}_psfMag"]
-        single_band = single_band.drop(columns=[f"{b}_psfMag" for b in bands])
+        single_band = single_band.drop(
+            columns=[col for col in single_band.columns if col.endswith("_psfMag")]
+        )
 
         single_band["extendedness"] = single_band[f"{band}_extendedness"]
-        single_band = single_band.drop(columns=[f"{b}_extendedness" for b in bands])
+        single_band = single_band.drop(
+            columns=[col for col in single_band.columns if col.endswith("_extendedness")]
+        )
 
         single_band_dfs.append(single_band)
 
@@ -201,6 +217,7 @@ def _process_partition_multi_band(
     df = df.dropna(subset=["lc"])
 
     # Filter bands and split light curves (rows) by band
+    df = _add_gr_color(df)
     df = _split_light_curves_by_band(df, bands=bands, lc_col="lc")
     # For DiaObjects the object magnitude is derived from the mean science flux
     # and may be undefined (non-positive flux); keeping those light curves does
@@ -279,11 +296,12 @@ def _open_catalog(
 
     # DiaObjects lack per-band psfMag/extendedness object columns; we request the
     # mean science flux instead and derive both in _normalize_dia_object_columns.
+    mag_bands = list(dict.fromkeys([*bands, *COLOR_BANDS]))
     if obj == "dia":
-        obj_mag_cols = [f"{band}_scienceFluxMean" for band in bands]
+        obj_mag_cols = [f"{band}_scienceFluxMean" for band in mag_bands]
         obj_extendedness_cols = []
     else:
-        obj_mag_cols = [f"{band}_psfMag" for band in bands]
+        obj_mag_cols = [f"{band}_psfMag" for band in mag_bands]
         obj_extendedness_cols = [f"{band}_extendedness" for band in bands]
 
     other_flag_cols = [
@@ -476,7 +494,9 @@ def rubin_dp_catalog_multi_band(
     # DiaObjects lack object-level psfMag/extendedness; derive them before the
     # per-band split that expects those columns.
     if obj == "dia":
-        catalog = catalog.map_partitions(_normalize_dia_object_columns, bands=bands)
+        catalog = catalog.map_partitions(
+            _normalize_dia_object_columns, bands=list(dict.fromkeys([*bands, *COLOR_BANDS]))
+        )
 
     if pre_filter_partition is not None:
         catalog = catalog.map_partitions(pre_filter_partition)

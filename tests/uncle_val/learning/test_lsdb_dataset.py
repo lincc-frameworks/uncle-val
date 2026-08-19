@@ -33,7 +33,7 @@ def generate_fake_catalog(output_n_obj, output_n_src, rng):
 def get_dask_client(client):
     """Creates a context manager for the dask client"""
     if client == "dask":
-        return Client(n_workers=2)
+        return Client(n_workers=2, dashboard_address=None)
     if client is None:
         return nullcontext(None)
     raise ValueError("Unsupported client type")

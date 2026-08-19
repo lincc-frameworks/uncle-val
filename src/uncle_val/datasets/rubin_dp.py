@@ -52,7 +52,7 @@ def _process_partition_single_band(
 ):
     # Normalize column names
     df = _rename_columns(df, lc_col=lc_col, id_col=id_col, flux_col=flux_col, flux_err_col=flux_err_col)
-    df = df.rename(columns={f"{band}_psgMag": "object_mag", f"{band}_extendedness": "extendedness"})
+    df = df.rename(columns={f"{band}_psfMag": "object_mag", f"{band}_extendedness": "extendedness"})
 
     # Filter by band
     df = df.query(f"lc.band == {band!r}")

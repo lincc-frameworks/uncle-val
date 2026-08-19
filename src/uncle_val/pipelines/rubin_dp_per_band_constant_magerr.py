@@ -11,6 +11,7 @@ from uncle_val.pipelines.training_loop import training_loop
 def run_rubin_dp_per_band_constant_magerr(
     *,
     non_extended_only: bool,
+    max_mag: float | None = None,
     output_dir: str | Path,
     loss_fn: UncleLoss,
     val_losses: dict[str, UncleLoss] | None = None,
@@ -27,6 +28,8 @@ def run_rubin_dp_per_band_constant_magerr(
     ----------
     non_extended_only : bool
         Whether to filter out extended sources.
+    max_mag : float or None
+        Keep only objects brighter than this magnitude. None applies no cut.
     output_dir : str or Path
         Run directory to save all the outputs to, see
         :func:`~uncle_val.pipelines.training_loop.training_loop` for details.
@@ -60,6 +63,8 @@ def run_rubin_dp_per_band_constant_magerr(
 
     if non_extended_only:
         catalog = catalog.query("extendedness == 0.0")
+    if max_mag is not None:
+        catalog = catalog.query(f"object_mag < {max_mag}")
 
     # On difference images "x" is the difference flux, consistent with zero for a
     # non-variable object, so the systematic is referenced to the science flux.

@@ -1,6 +1,6 @@
 import pytest
 
-from uncle_val.datasets.rubin_dp import rubin_dp_catalog_multi_band
+from uncle_val.datasets.rubin_dp import rubin_dp_catalog_multi_band, rubin_dp_catalog_single_band
 
 
 @pytest.mark.parametrize("img, n_obj, n_src", [("cal", 106, 631), ("diff", 112, 874)])
@@ -46,3 +46,19 @@ def test_rubin_dp_catalog_multi_band(rubin_dp_root, img, n_obj, n_src):
     assert len(flat_lc) == n_src
     if img == "diff":
         assert not flat_lc["psfFlux"].isna().any()
+
+
+def test_rubin_dp_catalog_single_band_has_object_mag(rubin_dp_root):
+    """The single-band catalog exposes object_mag, so magnitude cuts can be applied"""
+    catalog = rubin_dp_catalog_single_band(
+        rubin_dp_root,
+        band="r",
+        obj="science",
+        img="cal",
+        phot="PSF",
+        mode="forced",
+    )
+    df = catalog.compute()
+    assert "object_mag" in df.columns
+    assert "r_psfMag" not in df.columns, "the per-band magnitude should have been renamed"
+    assert df["object_mag"].notna().any()

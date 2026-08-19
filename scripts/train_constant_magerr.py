@@ -60,6 +60,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Keep only point sources, extendedness == 0. Default: keep all objects.",
     )
+    p.add_argument(
+        "--max-mag", type=float, default=None, help="Keep objects brighter than this. Default: no cut."
+    )
     p.add_argument("--val-start", type=float, default=0.7, help="Train/val hash boundary.")
     p.add_argument("--test-start", type=float, default=0.85, help="Val/test hash boundary.")
     p.add_argument("--n-src", type=int, default=10)
@@ -135,6 +138,7 @@ def main(argv: list[str] | None = None) -> None:
 
     common = {
         "non_extended_only": args.non_extended_only,
+        "max_mag": args.max_mag,
         "output_dir": output_dir(args),
         "loss_fn": epps_pulley_whiten_loss(lmbd=2.0, soft=20.0, kind="accum"),
         "val_losses": {

@@ -22,6 +22,7 @@ from uncle_val.pipelines.training_config import TrainingConfig
 from uncle_val.pipelines.utils import _launch_tfboard
 from uncle_val.pipelines.validation_set_utils import get_val_stats
 from uncle_val.utils.dask_client import Client
+from uncle_val.utils.provenance import write_run_info
 
 
 def get_val_workers(client: Client, device: torch.device) -> list[object] | None:
@@ -102,6 +103,9 @@ def training_loop(
 
     survey_config.to_json(output_dir / "survey_config.json")
     training_config.to_json(output_dir / "training_config.json")
+    # The configs do not capture everything a run depends on: filters applied by
+    # the calling pipeline live only in argv, and the code itself only in git.
+    write_run_info(output_dir / "run_info.json")
 
     if training_config.start_tfboard:
         _launch_tfboard(output_dir.parent)

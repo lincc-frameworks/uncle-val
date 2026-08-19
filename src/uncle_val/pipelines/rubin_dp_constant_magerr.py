@@ -13,6 +13,7 @@ def run_rubin_dp_constant_magerr(
     band: str,
     non_extended_only: bool,
     max_mag: float | None = None,
+    gr_color: tuple[float, float] | None = None,
     output_dir: str | Path,
     loss_fn: UncleLoss,
     val_losses: dict[str, UncleLoss] | None = None,
@@ -29,6 +30,9 @@ def run_rubin_dp_constant_magerr(
         Whether to filter out extended sources.
     max_mag : float or None
         Keep only objects brighter than this magnitude. None applies no cut.
+    gr_color : (float, float) or None
+        Keep only objects whose g-r colour lies in this half-open range.
+        None applies no colour cut.
     output_dir : str or Path
         Run directory to save all the outputs to, see
         :func:`~uncle_val.pipelines.training_loop.training_loop` for details.
@@ -60,6 +64,9 @@ def run_rubin_dp_constant_magerr(
         catalog = catalog.query("extendedness == 0.0")
     if max_mag is not None:
         catalog = catalog.query(f"object_mag < {max_mag}")
+    if gr_color is not None:
+        low, high = gr_color
+        catalog = catalog.query(f"{low} <= gr_color < {high}")
 
     # On difference images "x" is the difference flux, consistent with zero for a
     # non-variable object, so the systematic is referenced to the science flux.

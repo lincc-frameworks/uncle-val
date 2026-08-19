@@ -14,11 +14,12 @@ def test_rubin_dp_catalog_multi_band(rubin_dp_root, img, n_obj, n_src):
         mode="forced",
     )
     df = catalog.compute()
-    assert df.shape == (n_obj, 13)
+    assert df.shape == (n_obj, 14)
     assert list(df.columns) == [
         "id",
         "coord_ra",
         "coord_dec",
+        "gr_color",
         "band",
         "object_mag",
         "extendedness",
@@ -62,3 +63,20 @@ def test_rubin_dp_catalog_single_band_has_object_mag(rubin_dp_root):
     assert "object_mag" in df.columns
     assert "r_psfMag" not in df.columns, "the per-band magnitude should have been renamed"
     assert df["object_mag"].notna().any()
+
+
+def test_rubin_dp_catalog_gr_color_available_for_any_band(rubin_dp_root):
+    """g and r magnitudes are read whatever band is trained on, so gr_color exists"""
+    catalog = rubin_dp_catalog_single_band(
+        rubin_dp_root,
+        band="i",
+        obj="science",
+        img="cal",
+        phot="PSF",
+        mode="forced",
+    )
+    df = catalog.compute()
+    assert "gr_color" in df.columns
+    assert df["gr_color"].notna().any()
+    # the per-band magnitudes are consumed, not left lying around
+    assert not [col for col in df.columns if col.endswith("_psfMag")]

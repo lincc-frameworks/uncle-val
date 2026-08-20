@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 
 from uncle_val.datasets.rubin_dp import rubin_dp_catalog_multi_band, rubin_dp_catalog_single_band
@@ -80,3 +81,24 @@ def test_rubin_dp_catalog_gr_color_available_for_any_band(rubin_dp_root):
     assert df["gr_color"].notna().any()
     # the per-band magnitudes are consumed, not left lying around
     assert not [col for col in df.columns if col.endswith("_psfMag")]
+
+
+def test_rubin_dp_catalog_cone_search(rubin_dp_root):
+    """A cone restricts the catalog to objects within the given radius"""
+    kwargs = dict(obj="science", img="cal", phot="PSF", mode="forced")
+    everything = rubin_dp_catalog_multi_band(rubin_dp_root, **kwargs).compute()
+
+    # centre on a real object, so the cone is not empty
+    center = everything.iloc[0]
+    ra, dec = float(center["coord_ra"]), float(center["coord_dec"])
+
+    radius_arcsec = 1.0
+    coned = rubin_dp_catalog_multi_band(rubin_dp_root, cone=(ra, dec, radius_arcsec), **kwargs).compute()
+
+    assert 0 < len(coned) < len(everything)
+
+    separation = np.hypot(
+        (coned["coord_ra"] - ra) * np.cos(np.radians(dec)),
+        coned["coord_dec"] - dec,
+    )
+    assert (separation <= radius_arcsec / 3600.0).all()

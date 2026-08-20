@@ -19,6 +19,14 @@ LSDB_BANDS = "ugrizy"
 COLOR_BANDS = ("g", "r")
 
 
+def _apply_cone(catalog, cone):
+    """Restrict a catalog to a cone on the sky, pruning partitions outside it."""
+    if cone is None:
+        return catalog
+    ra, dec, radius_arcsec = cone
+    return catalog.cone_search(ra=ra, dec=dec, radius_arcsec=radius_arcsec)
+
+
 def _add_gr_color(df):
     """Add the object-level g-r colour, before the per-band magnitudes are dropped."""
     df["gr_color"] = df["g_psfMag"] - df["r_psfMag"]
@@ -346,6 +354,7 @@ def rubin_dp_catalog_single_band(
     phot: Literal["PSF"],
     mode: Literal["forced"],
     variability_detectors: Sequence[Callable] | Literal["all"] = "all",
+    cone: tuple[float, float, float] | None = None,
 ) -> lsdb.Catalog:
     """Rubin DP1 LSDB Catalog filtered for single-band DP1 sources
 
@@ -369,6 +378,11 @@ def rubin_dp_catalog_single_band(
         Which variability detectors are to pass to
         `get_combined_variability_detector()`, default passing `None` which means
         using all of them.
+    cone : (float, float, float) or None
+        Sky region to restrict the catalog to, as (ra, dec, radius_arcsec) in
+        degrees and arcseconds. Applied straight after opening, so partitions
+        outside the cone are pruned before any per-partition work. None reads
+        the whole sky.
 
     Returns
     -------
@@ -384,6 +398,7 @@ def rubin_dp_catalog_single_band(
         mode=mode,
         read_visit_cols=False,
     )
+    catalog = _apply_cone(catalog, cone)
 
     if variability_detectors == "all":
         variability_detectors = None
@@ -413,6 +428,7 @@ def rubin_dp_catalog_multi_band(
     variability_detectors: Sequence[Callable] | Literal["all"] = "all",
     pre_filter_partition: Callable[[NestedFrame], NestedFrame] | None = None,
     ccd_visit_cols: Sequence[str] | None = ("expTime", "seeing", "skyBg"),
+    cone: tuple[float, float, float] | None = None,
 ):
     """Rubin DP1 LSDB catalog, bands are one-hot encoded.
 
@@ -465,6 +481,11 @@ def rubin_dp_catalog_multi_band(
         ``detector`` are not requested from the source catalog either --
         skip this when the model being trained doesn't use those features,
         to avoid the join's I/O and merge cost.
+    cone : (float, float, float) or None
+        Sky region to restrict the catalog to, as (ra, dec, radius_arcsec) in
+        degrees and arcseconds. Applied straight after opening, so partitions
+        outside the cone are pruned before any per-partition work. None reads
+        the whole sky.
 
     Returns
     -------
@@ -490,6 +511,7 @@ def rubin_dp_catalog_multi_band(
         mode=mode,
         read_visit_cols=read_visit_cols,
     )
+    catalog = _apply_cone(catalog, cone)
 
     # DiaObjects lack object-level psfMag/extendedness; derive them before the
     # per-band split that expects those columns.

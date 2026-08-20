@@ -14,6 +14,7 @@ def run_rubin_dp_constant_magerr(
     non_extended_only: bool,
     max_mag: float | None = None,
     gr_color: tuple[float, float] | None = None,
+    cone: tuple[float, float, float] | None = None,
     output_dir: str | Path,
     loss_fn: UncleLoss,
     val_losses: dict[str, UncleLoss] | None = None,
@@ -33,6 +34,9 @@ def run_rubin_dp_constant_magerr(
     gr_color : (float, float) or None
         Keep only objects whose g-r colour lies in this half-open range.
         None applies no colour cut.
+    cone : (float, float, float) or None
+        Sky region to train on, as (ra, dec, radius_arcsec). None uses the
+        whole sky.
     output_dir : str or Path
         Run directory to save all the outputs to, see
         :func:`~uncle_val.pipelines.training_loop.training_loop` for details.
@@ -58,6 +62,7 @@ def run_rubin_dp_constant_magerr(
         img=survey_config.img,
         phot=survey_config.phot,
         mode=survey_config.mode,
+        cone=cone,
     )
 
     if non_extended_only:

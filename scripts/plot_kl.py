@@ -15,7 +15,7 @@ from pathlib import Path
 import torch
 
 from uncle_val.pipelines import ComputeConfig
-from uncle_val.pipelines.plotting import make_kl_distribution_plot
+from uncle_val.pipelines.plotting import make_kl_distribution_plot, selection_filter
 from uncle_val.pipelines.splits import SurveyConfig
 from uncle_val.pipelines.train_on_rubin_dp import rubin_dp_catalog_and_columns
 
@@ -78,6 +78,25 @@ def main():
         action="store_true",
         help="Keep only point sources, extendedness == 0. Default: keep all objects.",
     )
+    p.add_argument(
+        "--max-mag", type=float, default=None, help="Keep objects brighter than this. Default: no cut."
+    )
+    p.add_argument(
+        "--gr-color",
+        type=float,
+        nargs=2,
+        metavar=("LOW", "HIGH"),
+        default=None,
+        help="Keep objects with LOW <= g-r < HIGH. Default: no colour cut.",
+    )
+    p.add_argument(
+        "--cone",
+        type=float,
+        nargs=3,
+        metavar=("RA", "DEC", "RADIUS_ARCSEC"),
+        default=None,
+        help="Restrict to a cone on the sky: RA and DEC in degrees, radius in arcseconds.",
+    )
     p.add_argument("--output", type=Path, default=None, help="Output PDF; defaults into the model dir.")
     args = p.parse_args()
 
@@ -119,7 +138,12 @@ def main():
 
     output = args.output or model_dir_for_config / "plots" / f"model_{args.split}" / "kl_statistic.pdf"
 
-    pre_filter_partition = (lambda df: df.query("extendedness == 0.0")) if args.non_extended_only else None
+    pre_filter_partition, selection_label = selection_filter(
+        non_extended_only=args.non_extended_only,
+        max_mag=args.max_mag,
+        gr_color=tuple(args.gr_color) if args.gr_color is not None else None,
+    )
+    cone = tuple(args.cone) if args.cone is not None else None
 
     make_kl_distribution_plot(
         survey_config=survey_config,
@@ -130,6 +154,7 @@ def main():
         bands=bands,
         subsample_partitions=args.subsample_partitions,
         pre_filter_partition=pre_filter_partition,
+        cone=cone,
         output_path=output,
     )
     print(f"Wrote {output}")

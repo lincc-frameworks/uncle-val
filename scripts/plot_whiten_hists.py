@@ -16,6 +16,7 @@ from pathlib import Path
 import torch
 
 from uncle_val.pipelines import ComputeConfig, make_plots
+from uncle_val.pipelines.plotting import selection_filter
 from uncle_val.pipelines.splits import SurveyConfig
 from uncle_val.pipelines.train_on_rubin_dp import rubin_dp_catalog_and_columns
 
@@ -51,6 +52,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--non-extended-only",
         action="store_true",
         help="Keep only point sources, extendedness == 0. Default: keep all objects.",
+    )
+    p.add_argument(
+        "--max-mag", type=float, default=None, help="Keep objects brighter than this. Default: no cut."
+    )
+    p.add_argument(
+        "--gr-color",
+        type=float,
+        nargs=2,
+        metavar=("LOW", "HIGH"),
+        default=None,
+        help="Keep objects with LOW <= g-r < HIGH. Default: no colour cut.",
+    )
+    p.add_argument(
+        "--cone",
+        type=float,
+        nargs=3,
+        metavar=("RA", "DEC", "RADIUS_ARCSEC"),
+        default=None,
+        help="Restrict to a cone on the sky: RA and DEC in degrees, radius in arcseconds.",
     )
     p.add_argument(
         "--skip-uncorrected",
@@ -90,10 +110,19 @@ def main(argv: list[str] | None = None) -> None:
 
     output_dir = args.output_dir or args.model_dir / "plots" / f"hists_{args.split}"
 
+    pre_filter_partition, selection_label = selection_filter(
+        non_extended_only=args.non_extended_only,
+        max_mag=args.max_mag,
+        gr_color=tuple(args.gr_color) if args.gr_color is not None else None,
+    )
+    cone = tuple(args.cone) if args.cone is not None else None
+
     common = dict(
         split=split,
         survey_config=survey_config,
-        non_extended_only=args.non_extended_only,
+        non_extended_only=False,
+        pre_filter_partition=pre_filter_partition,
+        cone=cone,
         n_samples=args.n_samples,
         object_mags=list(args.object_mags),
         compute_config=ComputeConfig(n_workers=args.n_workers, device=args.device),

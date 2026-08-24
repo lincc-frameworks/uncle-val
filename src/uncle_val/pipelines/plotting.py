@@ -254,6 +254,7 @@ def _get_hists(
     add_mag_err_bins: np.ndarray,
     n_samples: int,
     subsample_partitions: float | None = None,
+    cone: tuple[float, float, float] | None = None,
 ):
     catalog = rubin_dp_catalog_multi_band(
         rubin_dp_root,
@@ -262,6 +263,7 @@ def _get_hists(
         img=img,
         phot=phot,
         mode=mode,
+        cone=cone,
     )
     if subsample_partitions is not None:
         n_partitions = max(1, int(round(catalog.npartitions * subsample_partitions)))
@@ -411,6 +413,45 @@ def _plot_magn_vs_add_mag_err(
     ax.legend()
 
 
+def selection_filter(
+    *,
+    non_extended_only: bool = False,
+    max_mag: float | None = None,
+    gr_color: tuple[float, float] | None = None,
+) -> tuple[Callable[[NestedFrame], NestedFrame] | None, str | None]:
+    """Build a ``pre_filter_partition`` and a matching label from the object cuts.
+
+    The label is the query itself, so a figure annotated with it states exactly
+    the selection that produced it.
+
+    Parameters
+    ----------
+    non_extended_only : bool
+        Keep only point sources, ``extendedness == 0``.
+    max_mag : float or None
+        Keep only objects brighter than this magnitude.
+    gr_color : (float, float) or None
+        Keep only objects whose g-r colour is in this half-open range.
+
+    Returns
+    -------
+    (callable or None, str or None)
+        The partition filter and its label, both None when nothing is selected.
+    """
+    terms = []
+    if non_extended_only:
+        terms.append("extendedness == 0.0")
+    if max_mag is not None:
+        terms.append(f"object_mag < {max_mag}")
+    if gr_color is not None:
+        low, high = gr_color
+        terms.append(f"{low} <= gr_color < {high}")
+    if not terms:
+        return None, None
+    expr = " and ".join(terms)
+    return (lambda df: df.query(expr)), expr
+
+
 def _default_result_bins() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Default ``(z_bins, mag_bins, add_mag_err_bins)`` edges for the result plots."""
     z_bins = np.r_[-10:10:1001j]
@@ -558,6 +599,7 @@ def make_whiten_distribution_plot(
     mag_slice: float | None = 21.0,
     bands: Sequence[str] = "ugrizy",
     output_path: str | Path | None = None,
+    cone: tuple[float, float, float] | None = None,
 ):
     """Compute uncorrected/corrected whitened signal and plot them together.
 
@@ -595,6 +637,7 @@ def make_whiten_distribution_plot(
         add_mag_err_bins=add_mag_err_bins,
         n_samples=1,
         subsample_partitions=subsample_partitions,
+        cone=cone,
     )
     hists_pre = _get_hists(survey_config.catalog_root, model_path=None, **common)
     hists_post = _get_hists(survey_config.catalog_root, model_path=model_path, **common)
@@ -774,6 +817,7 @@ def make_whiten_density_plot(
     xlim: tuple[float, float] | None = None,
     selection_label: str | None = None,
     output_path: str | Path | None = None,
+    cone: tuple[float, float, float] | None = None,
 ):
     """Compute uncorrected/corrected whitened signal and plot its distribution vs magnitude.
 
@@ -813,6 +857,7 @@ def make_whiten_density_plot(
         add_mag_err_bins=add_mag_err_bins,
         n_samples=1,
         subsample_partitions=subsample_partitions,
+        cone=cone,
     )
     hists_pre = _get_hists(survey_config.catalog_root, model_path=None, **common)
     hists_post = _get_hists(survey_config.catalog_root, model_path=model_path, **common)
@@ -939,6 +984,7 @@ def make_addmagerr_density_plot(
     xlim: tuple[float, float] | None = None,
     selection_label: str | None = None,
     output_path: str | Path | None = None,
+    cone: tuple[float, float, float] | None = None,
 ):
     """Compute the model-added magnitude error and plot its distribution vs magnitude.
 
@@ -979,6 +1025,7 @@ def make_addmagerr_density_plot(
         add_mag_err_bins=add_mag_err_bins,
         n_samples=1,
         subsample_partitions=subsample_partitions,
+        cone=cone,
     )
 
     return plot_addmagerr_density(
@@ -1007,6 +1054,7 @@ def make_plots(
     output_dir: str | Path | None = None,
     compute_config: ComputeConfig,
     subsample_partitions: float | None = None,
+    cone: tuple[float, float, float] | None = None,
 ):
     """Plot whiten signal for a Rubin DP catalog, optionally corrected with a model
 
@@ -1027,6 +1075,10 @@ def make_plots(
         curve length, split and extendedness cuts and before the histograms
         are built. Receives a ``NestedFrame`` and returns a filtered
         ``NestedFrame``.
+    cone : (float, float, float) or None
+        Sky region to plot, as (ra, dec, radius_arcsec). Applied when the
+        catalog is opened, so partitions outside it are pruned. None plots
+        the whole sky.
     model_path : path or None
         Path to a torch model file or None. If None, plot the original data.
     model_columns : Sequence[str], optional
@@ -1088,6 +1140,7 @@ def make_plots(
         add_mag_err_bins=add_mag_err_bins,
         n_samples=n_samples,
         subsample_partitions=subsample_partitions,
+        cone=cone,
     )
 
     fig, axes = plt.subplots(3, 2, figsize=(12, 12))
@@ -1355,6 +1408,7 @@ def _get_chi2_hists(
     device: torch.device | str,
     lg_chi2_bins: np.ndarray,
     subsample_partitions: float | None = None,
+    cone: tuple[float, float, float] | None = None,
 ):
     catalog = rubin_dp_catalog_multi_band(rubin_dp_root, bands=bands, obj=obj, img=img, phot=phot, mode=mode)
     if subsample_partitions is not None:
@@ -1377,6 +1431,7 @@ def _get_chi2_hists(
         model_columns=model_columns,
         device=torch.device(device),
         meta=_empty_chi2_counts(len(lg_chi2_bins) - 1),
+        cone=cone,
     )
 
     with Client(n_workers=n_workers, memory_limit="64GB") as client:
@@ -1558,6 +1613,7 @@ def make_chi2_distribution_plot(
     lg_chi2_bins: np.ndarray | None = None,
     xlim: tuple[float, float] | None = None,
     output_path: str | Path | None = None,
+    cone: tuple[float, float, float] | None = None,
 ):
     """Compute and plot the lg(reduced chi2) distribution of full light curves.
 
@@ -1603,6 +1659,7 @@ def make_chi2_distribution_plot(
         device=compute_config.device,
         lg_chi2_bins=lg_chi2_bins,
         subsample_partitions=subsample_partitions,
+        cone=cone,
     )
 
     return plot_chi2_distributions(
@@ -1800,6 +1857,7 @@ def _get_kl_hists(
     device: torch.device | str,
     lg_kl_bins: np.ndarray,
     subsample_partitions: float | None = None,
+    cone: tuple[float, float, float] | None = None,
 ):
     catalog = rubin_dp_catalog_multi_band(rubin_dp_root, bands=bands, obj=obj, img=img, phot=phot, mode=mode)
     if subsample_partitions is not None:
@@ -1822,6 +1880,7 @@ def _get_kl_hists(
         model_columns=model_columns,
         device=torch.device(device),
         meta=_empty_kl_counts(len(lg_kl_bins) - 1),
+        cone=cone,
     )
 
     with Client(n_workers=n_workers, memory_limit="64GB") as client:
@@ -2011,6 +2070,7 @@ def make_kl_distribution_plot(
     lg_kl_bins: np.ndarray | None = None,
     xlim: tuple[float, float] | None = None,
     output_path: str | Path | None = None,
+    cone: tuple[float, float, float] | None = None,
 ):
     """Compute and plot the lg(KL statistic) distribution of full light curves.
 
@@ -2056,6 +2116,7 @@ def make_kl_distribution_plot(
         device=compute_config.device,
         lg_kl_bins=lg_kl_bins,
         subsample_partitions=subsample_partitions,
+        cone=cone,
     )
 
     return plot_kl_distributions(

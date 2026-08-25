@@ -26,7 +26,7 @@ def get_dask_client(client):
         If an unsupported client type is provided.
     """
     if client == "dask":
-        return Client(n_workers=2)
+        return Client(n_workers=2, dashboard_address=None)
     if client is None:
         return nullcontext(None)
     raise ValueError(f"Unsupported client type: {client}")

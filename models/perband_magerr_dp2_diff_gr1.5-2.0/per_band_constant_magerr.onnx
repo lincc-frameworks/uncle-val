@@ -1,0 +1,727 @@
+
+pytorch2.12.1+cu130:þû
+·
+input
+val_3
+val_7
+val_7
+val_7slice_1node_slice_1"SliceJe
+	namespaceX: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/slice_1: aten.slice.TensorJv
+pkg.torch.onnx.class_hierarchyT['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.slice.Tensor']JŽ
+pkg.torch.onnx.fx_nodet%slice_1 : [num_users=1] = call_function[target=torch.ops.aten.slice.Tensor](args = (%inputs, 1, 0, 1), kwargs = {})J-
+pkg.torch.onnx.name_scopes['', 'slice_1']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+ž
+slice_1
+lifted_tensor_0divnode_div"DivJ_
+	namespaceR: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/div: aten.div.TensorJt
+pkg.torch.onnx.class_hierarchyR['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.div.Tensor']J”
+pkg.torch.onnx.fx_nodez%div : [num_users=1] = call_function[target=torch.ops.aten.div.Tensor](args = (%slice_1, %c_lifted_tensor_0), kwargs = {})J)
+pkg.torch.onnx.name_scopes['', 'div']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+‡
+divasinh
+node_asinh"AsinhJd
+	namespaceW: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/asinh: aten.asinh.defaultJw
+pkg.torch.onnx.class_hierarchyU['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.asinh.default']J‚
+pkg.torch.onnx.fx_nodeh%asinh : [num_users=1] = call_function[target=torch.ops.aten.asinh.default](args = (%div,), kwargs = {})J+
+pkg.torch.onnx.name_scopes['', 'asinh']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+¤
+asinh
+lifted_tensor_1mul_4
+node_mul_4"MulJa
+	namespaceT: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/mul_4: aten.mul.TensorJt
+pkg.torch.onnx.class_hierarchyR['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.mul.Tensor']J”
+pkg.torch.onnx.fx_nodez%mul_4 : [num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%asinh, %c_lifted_tensor_1), kwargs = {})J+
+pkg.torch.onnx.name_scopes['', 'mul_4']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+¸
+input
+val_7
+val_18
+val_7
+val_7slice_2node_slice_2"SliceJe
+	namespaceX: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/slice_2: aten.slice.TensorJv
+pkg.torch.onnx.class_hierarchyT['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.slice.Tensor']JŽ
+pkg.torch.onnx.fx_nodet%slice_2 : [num_users=1] = call_function[target=torch.ops.aten.slice.Tensor](args = (%inputs, 1, 1, 2), kwargs = {})J-
+pkg.torch.onnx.name_scopes['', 'slice_2']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+
+slice_2val_23node_Log_23"LogJd
+	namespaceW: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/log10: aten.log10.defaultJw
+pkg.torch.onnx.class_hierarchyU['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.log10.default']J†
+pkg.torch.onnx.fx_nodel%log10 : [num_users=1] = call_function[target=torch.ops.aten.log10.default](args = (%slice_2,), kwargs = {})J+
+pkg.torch.onnx.name_scopes['', 'log10']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+”
+val_23
+val_26log10
+node_log10"DivJd
+	namespaceW: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/log10: aten.log10.defaultJw
+pkg.torch.onnx.class_hierarchyU['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.log10.default']J†
+pkg.torch.onnx.fx_nodel%log10 : [num_users=1] = call_function[target=torch.ops.aten.log10.default](args = (%slice_2,), kwargs = {})J+
+pkg.torch.onnx.name_scopes['', 'log10']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+
+log10
+val_27sub_6
+node_sub_6"SubJa
+	namespaceT: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/sub_6: aten.sub.TensorJt
+pkg.torch.onnx.class_hierarchyR['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.sub.Tensor']J†
+pkg.torch.onnx.fx_nodel%sub_6 : [num_users=1] = call_function[target=torch.ops.aten.sub.Tensor](args = (%log10, -1.0), kwargs = {})J+
+pkg.torch.onnx.name_scopes['', 'sub_6']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+¤
+sub_6
+lifted_tensor_2div_1
+node_div_1"DivJa
+	namespaceT: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/div_1: aten.div.TensorJt
+pkg.torch.onnx.class_hierarchyR['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.div.Tensor']J”
+pkg.torch.onnx.fx_nodez%div_1 : [num_users=1] = call_function[target=torch.ops.aten.div.Tensor](args = (%sub_6, %c_lifted_tensor_2), kwargs = {})J+
+pkg.torch.onnx.name_scopes['', 'div_1']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+¹
+input
+val_18
+val_34
+val_7
+val_7slice_3node_slice_3"SliceJe
+	namespaceX: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/slice_3: aten.slice.TensorJv
+pkg.torch.onnx.class_hierarchyT['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.slice.Tensor']JŽ
+pkg.torch.onnx.fx_nodet%slice_3 : [num_users=1] = call_function[target=torch.ops.aten.slice.Tensor](args = (%inputs, 1, 2, 3), kwargs = {})J-
+pkg.torch.onnx.name_scopes['', 'slice_3']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+¨
+slice_3
+lifted_tensor_0div_2
+node_div_2"DivJa
+	namespaceT: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/div_2: aten.div.TensorJt
+pkg.torch.onnx.class_hierarchyR['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.div.Tensor']J–
+pkg.torch.onnx.fx_node|%div_2 : [num_users=1] = call_function[target=torch.ops.aten.div.Tensor](args = (%slice_3, %c_lifted_tensor_0), kwargs = {})J+
+pkg.torch.onnx.name_scopes['', 'div_2']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+•
+div_2asinh_1node_asinh_1"AsinhJf
+	namespaceY: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/asinh_1: aten.asinh.defaultJw
+pkg.torch.onnx.class_hierarchyU['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.asinh.default']J†
+pkg.torch.onnx.fx_nodel%asinh_1 : [num_users=1] = call_function[target=torch.ops.aten.asinh.default](args = (%div_2,), kwargs = {})J-
+pkg.torch.onnx.name_scopes['', 'asinh_1']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+­
+asinh_1
+lifted_tensor_1mul_15node_mul_15"MulJb
+	namespaceU: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/mul_15: aten.mul.TensorJt
+pkg.torch.onnx.class_hierarchyR['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.mul.Tensor']J—
+pkg.torch.onnx.fx_node}%mul_15 : [num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%asinh_1, %c_lifted_tensor_1), kwargs = {})J,
+pkg.torch.onnx.name_scopes['', 'mul_15']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+¹
+input
+val_34
+val_45
+val_7
+val_7slice_4node_slice_4"SliceJe
+	namespaceX: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/slice_4: aten.slice.TensorJv
+pkg.torch.onnx.class_hierarchyT['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.slice.Tensor']JŽ
+pkg.torch.onnx.fx_nodet%slice_4 : [num_users=1] = call_function[target=torch.ops.aten.slice.Tensor](args = (%inputs, 1, 3, 4), kwargs = {})J-
+pkg.torch.onnx.name_scopes['', 'slice_4']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+¹
+input
+val_45
+val_56
+val_7
+val_7slice_5node_slice_5"SliceJe
+	namespaceX: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/slice_5: aten.slice.TensorJv
+pkg.torch.onnx.class_hierarchyT['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.slice.Tensor']JŽ
+pkg.torch.onnx.fx_nodet%slice_5 : [num_users=1] = call_function[target=torch.ops.aten.slice.Tensor](args = (%inputs, 1, 4, 5), kwargs = {})J-
+pkg.torch.onnx.name_scopes['', 'slice_5']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+¹
+input
+val_56
+val_67
+val_7
+val_7slice_6node_slice_6"SliceJe
+	namespaceX: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/slice_6: aten.slice.TensorJv
+pkg.torch.onnx.class_hierarchyT['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.slice.Tensor']JŽ
+pkg.torch.onnx.fx_nodet%slice_6 : [num_users=1] = call_function[target=torch.ops.aten.slice.Tensor](args = (%inputs, 1, 5, 6), kwargs = {})J-
+pkg.torch.onnx.name_scopes['', 'slice_6']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+¹
+input
+val_67
+val_78
+val_7
+val_7slice_7node_slice_7"SliceJe
+	namespaceX: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/slice_7: aten.slice.TensorJv
+pkg.torch.onnx.class_hierarchyT['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.slice.Tensor']JŽ
+pkg.torch.onnx.fx_nodet%slice_7 : [num_users=1] = call_function[target=torch.ops.aten.slice.Tensor](args = (%inputs, 1, 6, 7), kwargs = {})J-
+pkg.torch.onnx.name_scopes['', 'slice_7']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+¹
+input
+val_78
+val_89
+val_7
+val_7slice_8node_slice_8"SliceJe
+	namespaceX: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/slice_8: aten.slice.TensorJv
+pkg.torch.onnx.class_hierarchyT['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.slice.Tensor']JŽ
+pkg.torch.onnx.fx_nodet%slice_8 : [num_users=1] = call_function[target=torch.ops.aten.slice.Tensor](args = (%inputs, 1, 7, 8), kwargs = {})J-
+pkg.torch.onnx.name_scopes['', 'slice_8']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+º
+input
+val_89
+val_100
+val_7
+val_7slice_9node_slice_9"SliceJe
+	namespaceX: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/slice_9: aten.slice.TensorJv
+pkg.torch.onnx.class_hierarchyT['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.slice.Tensor']JŽ
+pkg.torch.onnx.fx_nodet%slice_9 : [num_users=1] = call_function[target=torch.ops.aten.slice.Tensor](args = (%inputs, 1, 8, 9), kwargs = {})J-
+pkg.torch.onnx.name_scopes['', 'slice_9']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+ª
+mul_4
+div_1
+mul_15
+slice_4
+slice_5
+slice_6
+slice_7
+slice_8
+slice_9catnode_cat"Concat*
+axisÿÿÿÿÿÿÿÿÿ J`
+	namespaceS: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/cat: aten.cat.defaultJu
+pkg.torch.onnx.class_hierarchyS['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.cat.default']JÓ
+pkg.torch.onnx.fx_node¸%cat : [num_users=1] = call_function[target=torch.ops.aten.cat.default](args = ([%mul_4, %div_1, %mul_15, %slice_4, %slice_5, %slice_6, %slice_7, %slice_8, %slice_9], -1), kwargs = {})J)
+pkg.torch.onnx.name_scopes['', 'cat']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+¹
+catval_105node_Transpose_105"	Transpose*
+perm@@  Jc
+	namespaceV: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/index: aten.index.TensorJv
+pkg.torch.onnx.class_hierarchyT['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.index.Tensor']J™
+pkg.torch.onnx.fx_node%index : [num_users=1] = call_function[target=torch.ops.aten.index.Tensor](args = (%cat, [None, %b_band_columns]), kwargs = {})J+
+pkg.torch.onnx.name_scopes['', 'index']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+È
+val_105
+val_111val_112node_GatherND_112"GatherND*
+
+batch_dims  Jc
+	namespaceV: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/index: aten.index.TensorJv
+pkg.torch.onnx.class_hierarchyT['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.index.Tensor']J™
+pkg.torch.onnx.fx_node%index : [num_users=1] = call_function[target=torch.ops.aten.index.Tensor](args = (%cat, [None, %b_band_columns]), kwargs = {})J+
+pkg.torch.onnx.name_scopes['', 'index']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+³
+val_112index
+node_index"	Transpose*
+perm@@  Jc
+	namespaceV: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/index: aten.index.TensorJv
+pkg.torch.onnx.class_hierarchyT['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.index.Tensor']J™
+pkg.torch.onnx.fx_node%index : [num_users=1] = call_function[target=torch.ops.aten.index.Tensor](args = (%cat, [None, %b_band_columns]), kwargs = {})J+
+pkg.torch.onnx.name_scopes['', 'index']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+¸
+index
+addition_centi_mag_errmul_33node_mul_33"MulJb
+	namespaceU: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/mul_33: aten.mul.TensorJt
+pkg.torch.onnx.class_hierarchyR['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.mul.Tensor']J
+pkg.torch.onnx.fx_node‚%mul_33 : [num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%index, %p_addition_centi_mag_err), kwargs = {})J,
+pkg.torch.onnx.name_scopes['', 'mul_33']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+Ù
+mul_33
+val_109sum_1
+node_sum_1"	ReduceSum*
+noop_with_empty_axes  *
+keepdims Jf
+	namespaceY: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/sum_1: aten.sum.dim_IntListJy
+pkg.torch.onnx.class_hierarchyW['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.sum.dim_IntList']J’
+pkg.torch.onnx.fx_nodex%sum_1 : [num_users=1] = call_function[target=torch.ops.aten.sum.dim_IntList](args = (%mul_33, [-1], True), kwargs = {})J+
+pkg.torch.onnx.name_scopes['', 'sum_1']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+
+sum_1
+val_109squeezenode_squeeze"SqueezeJd
+	namespaceW: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/squeeze: aten.squeeze.dimJu
+pkg.torch.onnx.class_hierarchyS['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.squeeze.dim']J‡
+pkg.torch.onnx.fx_nodem%squeeze : [num_users=1] = call_function[target=torch.ops.aten.squeeze.dim](args = (%sum_1, -1), kwargs = {})J-
+pkg.torch.onnx.name_scopes['', 'squeeze']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+—
+squeeze
+val_114mul_38node_mul_38"MulJb
+	namespaceU: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/mul_38: aten.mul.TensorJt
+pkg.torch.onnx.class_hierarchyR['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.mul.Tensor']J‰
+pkg.torch.onnx.fx_nodeo%mul_38 : [num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%squeeze, 0.01), kwargs = {})J,
+pkg.torch.onnx.name_scopes['', 'mul_38']JÔ
+pkg.torch.onnx.stack_traceµFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 67, in forward
+    systematic_mag_err = 1e-2 * self.module(self.norm_inputs(inputs)).squeeze(-1)
+¯
+input
+val_15selectnode_select"Gather*
+axis Jb
+	namespaceU: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/select: aten.select.intJt
+pkg.torch.onnx.class_hierarchyR['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.select.int']Jˆ
+pkg.torch.onnx.fx_noden%select : [num_users=1] = call_function[target=torch.ops.aten.select.int](args = (%inputs, 1, 2), kwargs = {})J,
+pkg.torch.onnx.name_scopes['', 'select']Jà
+pkg.torch.onnx.stack_traceÁFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 70, in forward
+    inputs[..., self.source_flux_column], torch.tensor(self.flux_floor, device=inputs.device)
+ð
+select
+clonemaximumnode_maximum"MaxJh
+	namespace[: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/maximum: aten.maximum.defaultJy
+pkg.torch.onnx.class_hierarchyW['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.maximum.default']J
+pkg.torch.onnx.fx_nodev%maximum : [num_users=2] = call_function[target=torch.ops.aten.maximum.default](args = (%select, %clone), kwargs = {})J-
+pkg.torch.onnx.name_scopes['', 'maximum']J›
+pkg.torch.onnx.stack_trace}File "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 69, in forward
+    flux = torch.maximum(
+†
+input
+val_4select_1node_select_1"Gather*
+axis Jd
+	namespaceW: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/select_1: aten.select.intJt
+pkg.torch.onnx.class_hierarchyR['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.select.int']JŠ
+pkg.torch.onnx.fx_nodep%select_1 : [num_users=2] = call_function[target=torch.ops.aten.select.int](args = (%inputs, 1, 1), kwargs = {})J.
+pkg.torch.onnx.name_scopes['', 'select_1']J®
+pkg.torch.onnx.stack_traceFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 72, in forward
+    flux_err = inputs[..., self.err_column]
+
+select_1
+val_115mul_45node_mul_45"MulJb
+	namespaceU: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/mul_45: aten.mul.TensorJt
+pkg.torch.onnx.class_hierarchyR['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.mul.Tensor']J˜
+pkg.torch.onnx.fx_node~%mul_45 : [num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%select_1, 1.0857362047581294), kwargs = {})J,
+pkg.torch.onnx.name_scopes['', 'mul_45']J½
+pkg.torch.onnx.stack_tracežFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 73, in forward
+    mag_err = fluxerr2magerr(flux=flux, flux_err=flux_err)
+ý
+mul_45
+maximumdiv_3
+node_div_3"DivJa
+	namespaceT: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/div_3: aten.div.TensorJt
+pkg.torch.onnx.class_hierarchyR['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.div.Tensor']J‹
+pkg.torch.onnx.fx_nodeq%div_3 : [num_users=1] = call_function[target=torch.ops.aten.div.Tensor](args = (%mul_45, %maximum), kwargs = {})J+
+pkg.torch.onnx.name_scopes['', 'div_3']J½
+pkg.torch.onnx.stack_tracežFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 73, in forward
+    mag_err = fluxerr2magerr(flux=flux, flux_err=flux_err)
+
+div_3
+val_116pow_1
+node_pow_1"PowJh
+	namespace[: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/pow_1: aten.pow.Tensor_ScalarJ{
+pkg.torch.onnx.class_hierarchyY['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.pow.Tensor_Scalar']JŠ
+pkg.torch.onnx.fx_nodep%pow_1 : [num_users=1] = call_function[target=torch.ops.aten.pow.Tensor_Scalar](args = (%div_3, 2), kwargs = {})J+
+pkg.torch.onnx.name_scopes['', 'pow_1']JÃ
+pkg.torch.onnx.stack_trace¤File "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 75, in forward
+    new_mag_err = torch.sqrt(mag_err**2 + systematic_mag_err**2)
+‘
+mul_38
+val_116pow_2
+node_pow_2"PowJh
+	namespace[: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/pow_2: aten.pow.Tensor_ScalarJ{
+pkg.torch.onnx.class_hierarchyY['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.pow.Tensor_Scalar']J‹
+pkg.torch.onnx.fx_nodeq%pow_2 : [num_users=1] = call_function[target=torch.ops.aten.pow.Tensor_Scalar](args = (%mul_38, 2), kwargs = {})J+
+pkg.torch.onnx.name_scopes['', 'pow_2']JÃ
+pkg.torch.onnx.stack_trace¤File "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 75, in forward
+    new_mag_err = torch.sqrt(mag_err**2 + systematic_mag_err**2)
+‚
+pow_1
+pow_2add_84node_add_84"AddJb
+	namespaceU: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/add_84: aten.add.TensorJt
+pkg.torch.onnx.class_hierarchyR['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.add.Tensor']J‰
+pkg.torch.onnx.fx_nodeo%add_84 : [num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%pow_1, %pow_2), kwargs = {})J,
+pkg.torch.onnx.name_scopes['', 'add_84']JÃ
+pkg.torch.onnx.stack_trace¤File "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 75, in forward
+    new_mag_err = torch.sqrt(mag_err**2 + systematic_mag_err**2)
+ó
+add_84sqrt	node_sqrt"SqrtJb
+	namespaceU: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/sqrt: aten.sqrt.defaultJv
+pkg.torch.onnx.class_hierarchyT['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.sqrt.default']Jƒ
+pkg.torch.onnx.fx_nodei%sqrt : [num_users=1] = call_function[target=torch.ops.aten.sqrt.default](args = (%add_84,), kwargs = {})J*
+pkg.torch.onnx.name_scopes['', 'sqrt']JÃ
+pkg.torch.onnx.stack_trace¤File "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 75, in forward
+    new_mag_err = torch.sqrt(mag_err**2 + systematic_mag_err**2)
+•
+maximum
+val_118mul_52node_mul_52"MulJb
+	namespaceU: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/mul_52: aten.mul.TensorJt
+pkg.torch.onnx.class_hierarchyR['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.mul.Tensor']J—
+pkg.torch.onnx.fx_node}%mul_52 : [num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%maximum, 0.9210340371976184), kwargs = {})J,
+pkg.torch.onnx.name_scopes['', 'mul_52']JÄ
+pkg.torch.onnx.stack_trace¥File "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 76, in forward
+    new_flux_err = magerr2fluxerr(flux=flux, mag_err=new_mag_err)
+ƒ
+mul_52
+sqrtmul_54node_mul_54"MulJb
+	namespaceU: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/mul_54: aten.mul.TensorJt
+pkg.torch.onnx.class_hierarchyR['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.mul.Tensor']J‰
+pkg.torch.onnx.fx_nodeo%mul_54 : [num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%mul_52, %sqrt), kwargs = {})J,
+pkg.torch.onnx.name_scopes['', 'mul_54']JÄ
+pkg.torch.onnx.stack_trace¥File "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 76, in forward
+    new_flux_err = magerr2fluxerr(flux=flux, mag_err=new_mag_err)
+ä
+mul_54
+select_1div_4
+node_div_4"DivJa
+	namespaceT: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/div_4: aten.div.TensorJt
+pkg.torch.onnx.class_hierarchyR['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.div.Tensor']JŒ
+pkg.torch.onnx.fx_noder%div_4 : [num_users=1] = call_function[target=torch.ops.aten.div.Tensor](args = (%mul_54, %select_1), kwargs = {})J+
+pkg.torch.onnx.name_scopes['', 'div_4']J¢
+pkg.torch.onnx.stack_traceƒFile "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 77, in forward
+    u = new_flux_err / flux_err
+ú
+div_4
+val_7outputnode_unsqueeze"	UnsqueezeJl
+	namespace_: uncle_val.learning.models.magerr.PerBandConstantMagErrModel/unsqueeze: aten.unsqueeze.defaultJ{
+pkg.torch.onnx.class_hierarchyY['uncle_val.learning.models.magerr.PerBandConstantMagErrModel', 'aten.unsqueeze.default']JŽ
+pkg.torch.onnx.fx_nodet%unsqueeze : [num_users=1] = call_function[target=torch.ops.aten.unsqueeze.default](args = (%div_4, 1), kwargs = {})J/
+pkg.torch.onnx.name_scopes['', 'unsqueeze']J™
+pkg.torch.onnx.stack_trace{File "/astro/users/kmalanch/uncle-val/src/uncle_val/learning/models/magerr.py", line 78, in forward
+    return u[..., None]
+main_graph*6Baddition_centi_mag_errJÌGt?ªŽo?Å;m?Oû|?>qq?V‡x?*Blifted_tensor_0Jâ-E*Blifted_tensor_1J ä=*Blifted_tensor_2J   @*Bval_3J        *Bval_7J       *Bval_18J       *Bval_26JŽ]@*Bval_34J       *Bval_45J       *Bval_56J       *Bval_67J       *Bval_78J       *Bval_89J       *Bval_100J	       *ABval_111J0                                          *BcloneJµ^h@*Bval_4J       *Bval_15J       *Bval_27J  €¿*Bval_109Jÿÿÿÿÿÿÿÿ*Bval_114J
+×#<*Bval_115JgùŠ?*Bval_116J   @*Bval_118JãÈk?ZÌ
+input
+
+
+batch_size
+	"=
+/pkg.torch.export.graph_signature.InputSpec.kind
+USER_INPUT"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"+
+!pkg.torch.onnx.original_node_nameinputsb“
+output
+
+
+batch_size
+"?
+0pkg.torch.export.graph_signature.OutputSpec.kindUSER_OUTPUT".
+!pkg.torch.onnx.original_node_name	unsqueezejà
+addition_centi_mag_err
+
+
+"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"=
+!pkg.torch.onnx.original_node_namep_addition_centi_mag_errjÔ
+lifted_tensor_0
+ "B
+/pkg.torch.export.graph_signature.InputSpec.kindCONSTANT_TENSOR"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"6
+!pkg.torch.onnx.original_node_namec_lifted_tensor_0jÔ
+lifted_tensor_1
+ "B
+/pkg.torch.export.graph_signature.InputSpec.kindCONSTANT_TENSOR"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"6
+!pkg.torch.onnx.original_node_namec_lifted_tensor_1jÔ
+lifted_tensor_2
+ "B
+/pkg.torch.export.graph_signature.InputSpec.kindCONSTANT_TENSOR"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"6
+!pkg.torch.onnx.original_node_namec_lifted_tensor_2jX
+val_3
+
+
+"C
+$pkg.onnxscript.optimizer.folded_from['val_0', 'val_1', 'val_2']jX
+val_7
+
+
+"C
+$pkg.onnxscript.optimizer.folded_from['val_4', 'val_5', 'val_6']j\
+val_18
+
+
+"F
+$pkg.onnxscript.optimizer.folded_from['val_15', 'val_16', 'val_17']jN
+val_26
+ "<
+$pkg.onnxscript.optimizer.folded_from['val_24', 'val_25']j\
+val_34
+
+
+"F
+$pkg.onnxscript.optimizer.folded_from['val_31', 'val_32', 'val_33']j\
+val_45
+
+
+"F
+$pkg.onnxscript.optimizer.folded_from['val_42', 'val_43', 'val_44']j\
+val_56
+
+
+"F
+$pkg.onnxscript.optimizer.folded_from['val_53', 'val_54', 'val_55']j\
+val_67
+
+
+"F
+$pkg.onnxscript.optimizer.folded_from['val_64', 'val_65', 'val_66']j\
+val_78
+
+
+"F
+$pkg.onnxscript.optimizer.folded_from['val_75', 'val_76', 'val_77']j\
+val_89
+
+
+"F
+$pkg.onnxscript.optimizer.folded_from['val_86', 'val_87', 'val_88']j]
+val_100
+
+
+"F
+$pkg.onnxscript.optimizer.folded_from['val_97', 'val_98', 'val_99']jt
+val_111
+
+
+"Y
+$pkg.onnxscript.optimizer.folded_from1['band_columns', 'val_108', 'val_109', 'val_110']jL
+clone
+ ";
+$pkg.onnxscript.optimizer.folded_from['lifted_tensor_3']j
+val_4
+ j
+val_15
+ j
+val_27
+ j
+val_109
+
+
+j
+val_114
+ j
+val_115
+ j
+val_116
+ j
+val_118
+ j#
+slice_1
+
+
+batch_size
+j
+div
+
+
+batch_size
+j!
+asinh
+
+
+batch_size
+j!
+mul_4
+
+
+batch_size
+j#
+slice_2
+
+
+batch_size
+j"
+val_23
+
+
+batch_size
+j!
+log10
+
+
+batch_size
+j!
+sub_6
+
+
+batch_size
+j!
+div_1
+
+
+batch_size
+j#
+slice_3
+
+
+batch_size
+j!
+div_2
+
+
+batch_size
+j#
+asinh_1
+
+
+batch_size
+j"
+mul_15
+
+
+batch_size
+j#
+slice_4
+
+
+batch_size
+j#
+slice_5
+
+
+batch_size
+j#
+slice_6
+
+
+batch_size
+j#
+slice_7
+
+
+batch_size
+j#
+slice_8
+
+
+batch_size
+j#
+slice_9
+
+
+batch_size
+j
+cat
+
+
+batch_size
+	j#
+val_105
+
+	
+
+batch_sizej#
+val_112
+
+
+
+batch_sizej!
+index
+
+
+batch_size
+j"
+mul_33
+
+
+batch_size
+j!
+sum_1
+
+
+batch_size
+j
+squeeze
+
+
+batch_sizej
+mul_38
+
+
+batch_sizej
+select
+
+
+batch_sizej
+maximum
+
+
+batch_sizej 
+select_1
+
+
+batch_sizej
+mul_45
+
+
+batch_sizej
+div_3
+
+
+batch_sizej
+pow_1
+
+
+batch_sizej
+pow_2
+
+
+batch_sizej
+add_84
+
+
+batch_sizej
+sqrt
+
+
+batch_sizej
+mul_52
+
+
+batch_sizej
+mul_54
+
+
+batch_sizej
+div_4
+
+
+batch_size‚å
+0pkg.torch.export.ExportedProgram.graph_signature°
+# inputs
+p_addition_centi_mag_err: PARAMETER target='addition_centi_mag_err'
+b_band_columns: BUFFER target='band_columns' persistent=True
+c_lifted_tensor_0: CONSTANT_TENSOR target='lifted_tensor_0'
+c_lifted_tensor_1: CONSTANT_TENSOR target='lifted_tensor_1'
+c_lifted_tensor_2: CONSTANT_TENSOR target='lifted_tensor_2'
+c_lifted_tensor_3: CONSTANT_TENSOR target='lifted_tensor_3'
+inputs: USER_INPUT
+
+# outputs
+unsqueeze: USER_OUTPUT
+‚J
+2pkg.torch.export.ExportedProgram.range_constraints{s85: VR[1, int_oo]}B
+ rt
+input_namese["x", "err", "psfFlux", "is_u_band", "is_g_band", "is_r_band", "is_i_band", "is_z_band", "is_y_band"]

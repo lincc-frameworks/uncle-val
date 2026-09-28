@@ -1,0 +1,9 @@
+DP2 Object forcedDiaSource, extendedness=0, mag<21, 5M LCs, per cone
+
+band     Rubin-SV-225     DDF-COSMOS       DDF-EDFS
+u             0.00629        0.00929        0.00841
+g             0.00594        0.00747         0.0146
+r             0.00651        0.00899         0.0128
+i             0.00688        0.00872         0.0114
+z             0.00566        0.00719         0.0104
+y             0.00649        0.00803         0.0107

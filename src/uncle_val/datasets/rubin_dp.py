@@ -30,7 +30,7 @@ def _apply_cone(catalog, cone):
 
 def _add_gr_color(df):
     """Add the object-level g-r colour, before the per-band magnitudes are dropped."""
-    df["gr_color"] = df["g_psfMag"] - df["r_psfMag"]
+    df["gr_color"] = (df["g_psfMag"] - df["r_psfMag"]).astype("float64")
     return df
 
 

@@ -92,7 +92,7 @@ def _apply_model_and_whiten(df, model_path, model_columns, device):
     every row of ``df`` uniformly.
     """
     if model_path is not None:
-        model = torch.load(model_path, weights_only=False).to(device)
+        model = torch.load(model_path, weights_only=False, map_location=device)
         model.eval()
 
         def apply_model(x, err, *extras):
@@ -1283,7 +1283,7 @@ def _reduce_chi2(df, model_path, model_columns, device):
     """
     model = None
     if model_path is not None:
-        model = torch.load(model_path, weights_only=False).to(device)
+        model = torch.load(model_path, weights_only=False, map_location=device)
         model.eval()
 
     def per_lc(x, err, *extras):
@@ -1410,7 +1410,9 @@ def _get_chi2_hists(
     subsample_partitions: float | None = None,
     cone: tuple[float, float, float] | None = None,
 ):
-    catalog = rubin_dp_catalog_multi_band(rubin_dp_root, bands=bands, obj=obj, img=img, phot=phot, mode=mode)
+    catalog = rubin_dp_catalog_multi_band(
+        rubin_dp_root, bands=bands, obj=obj, img=img, phot=phot, mode=mode, cone=cone
+    )
     if subsample_partitions is not None:
         n_partitions = max(1, int(round(catalog.npartitions * subsample_partitions)))
         rng = np.random.default_rng(0)
@@ -1431,7 +1433,6 @@ def _get_chi2_hists(
         model_columns=model_columns,
         device=torch.device(device),
         meta=_empty_chi2_counts(len(lg_chi2_bins) - 1),
-        cone=cone,
     )
 
     with Client(n_workers=n_workers, memory_limit="64GB") as client:
@@ -1732,7 +1733,7 @@ def _reduce_kl(df, model_path, model_columns, device):
     """
     model = None
     if model_path is not None:
-        model = torch.load(model_path, weights_only=False).to(device)
+        model = torch.load(model_path, weights_only=False, map_location=device)
         model.eval()
 
     def per_lc(x, err, *extras):
@@ -1859,7 +1860,9 @@ def _get_kl_hists(
     subsample_partitions: float | None = None,
     cone: tuple[float, float, float] | None = None,
 ):
-    catalog = rubin_dp_catalog_multi_band(rubin_dp_root, bands=bands, obj=obj, img=img, phot=phot, mode=mode)
+    catalog = rubin_dp_catalog_multi_band(
+        rubin_dp_root, bands=bands, obj=obj, img=img, phot=phot, mode=mode, cone=cone
+    )
     if subsample_partitions is not None:
         n_partitions = max(1, int(round(catalog.npartitions * subsample_partitions)))
         rng = np.random.default_rng(0)
@@ -1880,7 +1883,6 @@ def _get_kl_hists(
         model_columns=model_columns,
         device=torch.device(device),
         meta=_empty_kl_counts(len(lg_kl_bins) - 1),
-        cone=cone,
     )
 
     with Client(n_workers=n_workers, memory_limit="64GB") as client:

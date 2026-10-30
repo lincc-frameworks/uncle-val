@@ -29,8 +29,6 @@ def _apply_cone(catalog, cone):
 
 def _add_gr_color(df):
     """Add the object-level g-r colour, before the per-band magnitudes are dropped."""
-    # numpy float64 makes missing colours NaN instead of pd.NA, so a partition
-    # with no colours still gets a float, not null, nested field
     df["gr_color"] = (df["g_psfMag"] - df["r_psfMag"]).astype("float64")
     return df
 

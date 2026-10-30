@@ -5,7 +5,8 @@ from typing import Literal
 import lsdb
 import numpy as np
 import pandas as pd
-import pyarrow.feather as feather
+import pyarrow as pa
+import pyarrow.ipc as ipc
 from nested_pandas import NestedFrame
 from upath import UPath
 
@@ -171,7 +172,10 @@ def _read_ccd_visit_table(path, columns):
     polar_cols = ["detector_rho", "detector_cos_phi", "detector_sin_phi"]
     if columns is not None:
         columns = list(columns) + [c for c in polar_cols if c not in columns]
-    return feather.read_table(path, columns=columns, memory_map=True).to_pandas(types_mapper=pd.ArrowDtype)
+    table = ipc.open_file(pa.memory_map(str(path))).read_all()
+    if columns is not None:
+        table = table.select(columns)
+    return table.to_pandas(types_mapper=pd.ArrowDtype)
 
 
 def _add_visit_info(df, *, lc_col, ccd_visits_path, ccd_visits_cols):

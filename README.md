@@ -7,16 +7,11 @@ Code for the paper "Photometric Uncertainty Correction for Time-Domain Surveys: 
 
 ## Repository structure
 
-- `src/uncle_val/` — the Python package:
-  - `datasets/` — light curve datasets: Rubin DP catalogs streamed with LSDB, in-memory and synthetic ones;
-  - `learning/` — uncertainty correction models, loss functions, training, and feature importance;
-  - `pipelines/` — end-to-end training and validation pipelines for Rubin DP1 and DP2, and plotting;
-  - `utils/` — magnitude–flux conversions, hashing for the train/validation/test split, run provenance, Dask client;
-  - `stat_tests.py` — normality tests (Kolmogorov–Smirnov, Anderson–Darling, Epps–Pulley, etc.) of the whitened signal.
-- `scripts/` — command-line scripts for training the models and making the paper figures.
-- `models/` — trained models, with their configurations and diagnostic plots, including the DP2 models used for the corrected uncertainties in the DP2 HATS catalogs.
-- `docs/` — documentation and notebooks, including pre-executed DP1 and DP2 analysis notebooks in `docs/pre_executed/`.
-- `tests/` — unit tests and test data.
+- `src/uncle_val/` — the Python package.
+- `scripts/` — scripts for training the models and making the paper figures.
+- `models/` — trained models.
+- `docs/` — documentation and notebooks.
+- `tests/` — unit tests.
 
 ## Acknowledgements
 

@@ -1,48 +1,36 @@
-
 # uncle-val
 
 [![Template](https://img.shields.io/badge/Template-LINCC%20Frameworks%20Python%20Project%20Template-brightgreen)](https://lincc-ppt.readthedocs.io/en/latest/)
-
-[![PyPI](https://img.shields.io/pypi/v/uncle-val?color=blue&logo=pypi&logoColor=white)](https://pypi.org/project/uncle-val/)
 [![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/lincc-frameworks/uncle-val/smoke-test.yml)](https://github.com/lincc-frameworks/uncle-val/actions/workflows/smoke-test.yml)
-[![Codecov](https://codecov.io/gh/lincc-frameworks/uncle-val/branch/main/graph/badge.svg)](https://codecov.io/gh/lincc-frameworks/uncle-val)
-[![Read The Docs](https://img.shields.io/readthedocs/uncle-val)](https://uncle-val.readthedocs.io/)
 
-This project was automatically generated using the LINCC-Frameworks 
-[python-project-template](https://github.com/lincc-frameworks/python-project-template).
+Code for the paper "Photometric Uncertainty Correction for Time-Domain Surveys: Vera C. Rubin Data Preview 2 Case Study", Malanchev et al., in prep.
 
-A repository badge was added to show that this project uses the python-project-template, however it's up to
-you whether or not you'd like to display it!
+## Repository structure
 
-For more information about the project template see the 
-[documentation](https://lincc-ppt.readthedocs.io/en/latest/).
-
-## Dev Guide - Getting Started
-
-Before installing any dependencies or writing code, it's a great idea to create a
-virtual environment. LINCC-Frameworks engineers primarily use `conda` to manage virtual
-environments. If you have conda installed locally, you can run the following to
-create and activate a new environment.
+- `src/uncle_val/` — the Python package.
+- `scripts/` — scripts for data preparation, model training, and the paper figures.
+- `models/` — trained models.
+- `docs/` — documentation and notebooks.
+- `tests/` — unit tests.
+- `data/` — input data, not included in the repository. Expected structure:
 
 ```
->> conda create -n <env_name> python=3.11
->> conda activate <env_name>
+data/
+├── dp1/
+│   ├── object_collection/          # HATS collection of DP1 objects with forced sources
+│   ├── dia_object_collection/      # HATS collection of DP1 DIA objects with forced sources
+│   └── public_parquet/
+│       ├── ccd_visit.parquet
+│       └── ccd_visit_prepared.feather   # made by scripts/prepare_ccd_visit_feather.py
+└── dp2/
+    ├── object_collection/
+    ├── dia_object_collection/
+    └── public_parquet/
+        ├── ccd_visit.parquet            # fetched by scripts/fetch_dp2_ccd_visit.py
+        ├── ccd_visit_prepared.feather   # made by scripts/prepare_ccd_visit_feather.py
+        └── detector_center.parquet
 ```
 
-Once you have created a new environment, you can install this project for local
-development using the following commands:
+## Acknowledgements
 
-```
->> ./.setup_dev.sh
->> conda install pandoc
-```
-
-Notes:
-1. `./.setup_dev.sh` will initialize pre-commit for this local repository, so
-   that a set of tests will be run prior to completing a local commit. For more
-   information, see the Python Project Template documentation on 
-   [pre-commit](https://lincc-ppt.readthedocs.io/en/latest/practices/precommit.html)
-2. Install `pandoc` allows you to verify that automatic rendering of Jupyter notebooks
-   into documentation for ReadTheDocs works as expected. For more information, see
-   the Python Project Template documentation on
-   [Sphinx and Python Notebooks](https://lincc-ppt.readthedocs.io/en/latest/practices/sphinx.html#python-notebooks)
+This project is supported by Schmidt Sciences.

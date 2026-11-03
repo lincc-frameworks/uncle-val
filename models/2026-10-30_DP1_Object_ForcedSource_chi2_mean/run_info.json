@@ -1,0 +1,19 @@
+{
+  "argv": [
+    "scripts/train_mlp_loss.py",
+    "--catalog-root",
+    "/astro/users/kmalanch/uncle-val/data/dp1",
+    "--loss",
+    "chi2",
+    "--kind",
+    "mean",
+    "--device",
+    "cuda:0",
+    "--n-workers",
+    "8"
+  ],
+  "cwd": "/astro/users/kmalanch/uncle-val",
+  "started_at": "2026-10-30T13:41:41+00:00",
+  "git_commit": "0e0d924d0fbfca13ac372012b1b8687ed34074f7",
+  "git_dirty": false
+}

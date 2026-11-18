@@ -1,9 +1,9 @@
 #!/usr/bin/env python
-"""Whitened-signal distributions of several trained models, overlaid.
+"""Whitened-signal distributions of several trained models, side by side.
 
-Renders one figure with a panel over all object magnitudes and one per
-requested object magnitude bin; each panel overlays the whitened-signal
-histograms of all models in one band and the standard normal distribution.
+Renders one figure with a column per model and a row over all object
+magnitudes plus one per requested object magnitude bin; each panel shows the
+whitened-signal histogram in one band with the fitted and standard normal ones.
 Used to compare models trained with different loss functions on the same data.
 """
 
@@ -31,7 +31,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "The data selection is taken from the first one.",
     )
     p.add_argument(
-        "--label", nargs="+", required=True, help="Legend labels, one per --model-dir, in the same order."
+        "--label", nargs="+", required=True, help="Column titles, one per --model-dir, in the same order."
     )
     p.add_argument("--model-file", default="MLPModel.pt", help="Model file within each --model-dir.")
     p.add_argument("--catalog-root", type=Path, required=True, help="Override catalog_root (absolute).")
@@ -42,7 +42,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=float,
         nargs="*",
         default=[18.0, 21.0],
-        help="Object magnitudes to add a magnitude-bin panel for.",
+        help="Object magnitudes to add a magnitude-bin row for.",
     )
     p.add_argument("--n-workers", type=int, default=8)
     p.add_argument("--device", default="cpu")
@@ -52,7 +52,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Render the overlaid whitened-signal distributions."""
+    """Render the grid of whitened-signal distributions."""
     args = parse_args(argv)
     if len(args.label) != len(args.model_dir):
         raise ValueError("--label must have one entry per --model-dir")

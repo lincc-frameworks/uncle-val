@@ -2141,8 +2141,6 @@ def make_kl_distribution_plot(
 _PAPER_TEXT_WIDTH_IN = 7.1
 # Merge this many of the fine whitened-signal bins of _default_result_bins
 _WHITEN_COMPARISON_REBIN = 10
-# Okabe-Ito colorblind-safe colors; the first one is for the reference (first) model
-_WHITEN_COMPARISON_COLORS = ("#0072B2", "#D55E00", "#E69F00", "#009E73", "#CC79A7", "#56B4E9")
 
 
 def plot_whiten_comparison(
@@ -2153,22 +2151,23 @@ def plot_whiten_comparison(
     xlim: tuple[float, float] = (-4.0, 4.0),
     output_path: str | Path | None = None,
 ):
-    """Whitened-signal distributions of several models in one band, overlaid.
+    """Grid of whitened-signal distributions of several models in one band.
 
-    One panel over all object magnitudes and one per requested object
-    magnitude bin; each panel overlays the step histograms of all models and
-    the standard normal distribution. The first model is drawn thicker, as the
-    reference one.
+    One column per model and one row per magnitude selection: all object
+    magnitudes, then one row per requested object magnitude bin. Each panel
+    shows the histogram of the whitened signal, the normal distribution with
+    its mean and standard deviation (solid), and the standard normal one
+    (dashed).
 
     Parameters
     ----------
     hists_by_label : dict of str to pd.DataFrame
         Histogram tables from :func:`_get_hists`, one per model, keyed by the
-        legend label; the order of the dict is the order of the colors.
+        column title; ``", "`` in a title starts a new line.
     band : str
         Band to plot.
     object_mags : sequence of float
-        Object magnitudes, one panel for the magnitude bin of each.
+        Object magnitudes, one row for the magnitude bin of each.
     xlim : (float, float)
         Horizontal limits, in whitened-signal units.
     output_path : path or None
@@ -2183,6 +2182,7 @@ def plot_whiten_comparison(
     z_centers = 0.5 * (z_bins[1:] + z_bins[:-1])
     coarse_bins = z_bins[::_WHITEN_COMPARISON_REBIN]
     coarse_width = z_width * _WHITEN_COMPARISON_REBIN
+    grid = np.linspace(*xlim, 400)
 
     selections = [("all magnitudes", None)]
     for obj_mag in object_mags:
@@ -2190,59 +2190,42 @@ def plot_whiten_comparison(
         lo, hi = mag_bins[mag_bin_idx], mag_bins[mag_bin_idx + 1]
         selections.append((f"{lo:g}\N{EN DASH}{hi:g} mag", mag_bin_idx))
 
+    # Same colors as the uncorrected/corrected histograms of plot_whiten_distributions
+    cb = plt.style.library["tableau-colorblind10"]["axes.prop_cycle"].by_key()["color"]
+    c_hist, c_ref = cb[0], "black"
+
+    n_rows, n_cols = len(selections), len(hists_by_label)
     fig, axes = plt.subplots(
-        1,
-        len(selections),
-        figsize=(_PAPER_TEXT_WIDTH_IN, 2.6),
+        n_rows,
+        n_cols,
+        figsize=(_PAPER_TEXT_WIDTH_IN, 1.35 * n_rows + 0.9),
         sharex=True,
         sharey=True,
         layout="constrained",
+        squeeze=False,
     )
-    axes = np.atleast_1d(axes)
-    reference_grid = np.linspace(*xlim, 400)
-    for ax, (title, mag_bin_idx) in zip(axes, selections, strict=True):
-        for i, (color, (label, hists)) in enumerate(
-            zip(_WHITEN_COMPARISON_COLORS, hists_by_label.items(), strict=False)
-        ):
-            if mag_bin_idx is not None:
-                hists = hists.query(f"mag_bin_idx == {mag_bin_idx}")
-            agg, _mean, _std = _aggregate_hists(
-                hists, band, hist_column="z_hist", value_centers=z_centers, value_width=z_width
+    for col, (label, hists) in enumerate(hists_by_label.items()):
+        axes[0, col].set_title(label.replace(", ", ",\n"), fontsize=_METRIC_FONTSIZE["label"])
+        for row, (row_label, mag_bin_idx) in enumerate(selections):
+            ax = axes[row, col]
+            selected = hists if mag_bin_idx is None else hists.query(f"mag_bin_idx == {mag_bin_idx}")
+            agg, mean, std = _aggregate_hists(
+                selected, band, hist_column="z_hist", value_centers=z_centers, value_width=z_width
             )
             counts = agg["count"].to_numpy().reshape(-1, _WHITEN_COMPARISON_REBIN).sum(axis=1)
-            ax.stairs(
-                counts / counts.sum() / coarse_width,
-                coarse_bins,
-                color=color,
-                lw=1.6 if i == 0 else 1.0,
-                zorder=3 if i == 0 else 2,
-                label=label,
-            )
-        ax.plot(
-            reference_grid,
-            norm.pdf(reference_grid),
-            color="black",
-            ls=(0, (4, 2)),
-            lw=0.8,
-            label="standard normal",
-        )
-        ax.set_title(title, fontsize=_METRIC_FONTSIZE["label"])
-        ax.set_xlim(*xlim)
-        ax.tick_params(labelsize=_METRIC_FONTSIZE["tick"])
+            ax.stairs(counts / counts.sum() / coarse_width, coarse_bins, fill=True, color=c_hist, alpha=0.3)
+            ax.plot(grid, norm.pdf(grid, mean, std), color=c_hist, lw=1.0)
+            ax.plot(grid, norm.pdf(grid), color=c_ref, ls=(0, (4, 2)), lw=0.8)
+            ax.set_xlim(*xlim)
+            ax.set_xticks([-3, 0, 3])
+            ax.tick_params(labelsize=_METRIC_FONTSIZE["tick"])
+            if col == n_cols - 1:
+                ax.yaxis.set_label_position("right")
+                ax.set_ylabel(row_label, fontsize=_METRIC_FONTSIZE["label"])
+    axes[0, 0].set_ylim(bottom=0.0)
 
     fig.supxlabel("whitened signal", fontsize=_METRIC_FONTSIZE["label"])
     fig.supylabel("probability density", fontsize=_METRIC_FONTSIZE["label"])
-    handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(
-        handles,
-        labels,
-        loc="outside upper center",
-        ncol=int(np.ceil(len(labels) / 2)),
-        frameon=False,
-        fontsize=_METRIC_FONTSIZE["legend"],
-        handlelength=1.5,
-        columnspacing=1.0,
-    )
     if output_path is not None:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2262,12 +2245,12 @@ def make_whiten_comparison_plot(
     subsample_partitions: float | None = None,
     output_path: str | Path | None = None,
 ):
-    """Compute the whitened-signal histograms of several models and overlay them.
+    """Compute the whitened-signal histograms of several models and plot them in a grid.
 
     Parameters
     ----------
     models : dict of str to (path, sequence of str)
-        Model file and its input columns, keyed by the legend label.
+        Model file and its input columns, keyed by the column title.
     survey_config : SurveyConfig
         Survey configuration of the data, including the split boundaries and n_src.
     split : ``'train'``, ``'val'``, ``'test'``, or ``None``
@@ -2275,7 +2258,7 @@ def make_whiten_comparison_plot(
     band : str
         Band to plot.
     object_mags : sequence of float
-        Object magnitudes, one panel for the magnitude bin of each.
+        Object magnitudes, one row for the magnitude bin of each.
     compute_config : ComputeConfig
         ``n_workers`` and ``device`` are used.
     subsample_partitions : float or None

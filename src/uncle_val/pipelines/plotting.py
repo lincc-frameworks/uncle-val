@@ -1477,6 +1477,77 @@ def _calibrated_mixture_density(counts, band, *, centers):
     return (weight @ per_dof) * y * np.log(10.0)
 
 
+# The per-band metric figures (reduced chi2, KL) are drawn at half of the AASTeX
+# text width (513 pt), so that the font sizes below are the printed ones; none is
+# smaller than the 9 pt of the AASTeX figure captions.
+_METRIC_FIG_WIDTH_IN = 3.5
+_METRIC_FONTSIZE = {"tick": 9.0, "label": 9.0, "band": 10.0, "note": 9.0, "legend": 9.0}
+
+
+def _metric_band_axes(n_bands: int):
+    """Figure and flat axes of a per-band metric plot, two panels per row."""
+    ncols = 2
+    nrows = int(np.ceil(n_bands / ncols))
+    fig, axes = plt.subplots(
+        nrows,
+        ncols,
+        figsize=(_METRIC_FIG_WIDTH_IN, 1.4 * nrows + 0.5),
+        sharex=True,
+        sharey=True,
+        layout="constrained",
+    )
+    axes = np.atleast_1d(axes).flatten()
+    for ax in axes:
+        ax.tick_params(labelsize=_METRIC_FONTSIZE["tick"])
+    for ax in axes[n_bands:]:
+        ax.set_visible(False)
+    return fig, axes
+
+
+def _metric_panel_labels(ax, band: str, note: str) -> None:
+    """Band name (top left) and, below it, the before/after mean (right) above the curves of a panel."""
+    ax.text(
+        0.04,
+        0.96,
+        f"${band}$",
+        transform=ax.transAxes,
+        va="top",
+        ha="left",
+        fontsize=_METRIC_FONTSIZE["band"],
+        fontweight="bold",
+    )
+    ax.text(
+        0.97,
+        0.79,
+        note,
+        transform=ax.transAxes,
+        va="top",
+        ha="right",
+        fontsize=_METRIC_FONTSIZE["note"],
+    )
+
+
+def _finish_metric_figure(fig, *, xlabel: str, handles, output_path):
+    """Shared axis labels and legend, and optionally save the figure."""
+    fig.supxlabel(xlabel, fontsize=_METRIC_FONTSIZE["label"])
+    fig.supylabel("probability density", fontsize=_METRIC_FONTSIZE["label"])
+    fig.legend(
+        handles=handles,
+        loc="outside upper center",
+        ncol=len(handles),
+        frameon=False,
+        fontsize=_METRIC_FONTSIZE["legend"],
+        handlelength=1.5,
+        columnspacing=1.0,
+    )
+    if output_path is not None:
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(output_path)
+        plt.close(fig)
+    return fig
+
+
 def plot_chi2_distributions(
     counts,
     *,
@@ -1536,61 +1607,28 @@ def plot_chi2_distributions(
         pre, mean_pre = _lg_chi2_density(counts, band, "full_uncorrected", lg_chi2_bins=lg_chi2_bins)
         post, mean_post = _lg_chi2_density(counts, band, "full_corrected", lg_chi2_bins=lg_chi2_bins)
         mixture_ref = _calibrated_mixture_density(counts, band, centers=ref_grid)
-        ymax = max(ymax, pre.max(), post.max())
+        ymax = max(ymax, pre.max(), post.max(), mixture_ref.max())
 
         ax.stairs(pre, lg_chi2_bins, fill=True, color=c_uncorr, alpha=0.45)
-        ax.stairs(post, lg_chi2_bins, color=c_corr, lw=1.8)
-        ax.plot(ref_grid, mixture_ref, color=c_ref, ls=(0, (4, 2)), lw=1.1)
-        ax.axvline(0.0, color="0.6", lw=0.7, zorder=0)  # reduced chi2 = 1
-        ax.text(
-            0.97,
-            0.96,
-            f"${band}$",
-            transform=ax.transAxes,
-            va="top",
-            ha="right",
-            fontsize=13,
-            fontweight="bold",
-        )
-        ax.text(
-            0.97,
-            0.82,
-            rf"red. $\chi^2$: {mean_pre:.2f}$\to${mean_post:.2f}",
-            transform=ax.transAxes,
-            va="top",
-            ha="right",
-            fontsize=8.0,
-        )
+        ax.stairs(post, lg_chi2_bins, color=c_corr, lw=1.2)
+        ax.plot(ref_grid, mixture_ref, color=c_ref, ls=(0, (4, 2)), lw=0.8)
+        ax.axvline(0.0, color="0.6", lw=0.5, zorder=0)  # reduced chi2 = 1
+        _metric_panel_labels(ax, band, rf"$\langle\hat\chi^2\rangle$ {mean_pre:.2f}$\to${mean_post:.2f}")
         ax.set_xlim(*xlim)
 
-    ncols = 3
-    nrows = int(np.ceil(len(bands) / ncols))
-    fig, axes = plt.subplots(nrows, ncols, figsize=(3.2 * ncols, 2.8 * nrows), sharex=True, sharey=True)
-    axes = np.atleast_1d(axes).flatten()
+    fig, axes = _metric_band_axes(len(bands))
     for ax, band in zip(axes, bands, strict=False):
         panel(ax, band)
-    axes[0].set_ylim(0.0, 1.12 * ymax)  # shared y; give the tall peaks headroom
-    for ax in axes[len(bands) :]:
-        ax.set_visible(False)
-    for ax in axes[len(bands) - ncols : len(bands)]:
-        ax.set_xlabel(r"$\lg(\mathrm{reduced}\ \chi^2)$")
-    for ax in axes[::ncols]:
-        ax.set_ylabel("probability density")
+    axes[0].set_ylim(0.0, 1.6 * ymax)  # shared y; headroom for the panel labels
 
     handles = [
         Patch(facecolor=c_uncorr, alpha=0.45, label="uncorrected"),
-        Line2D([], [], color=c_corr, lw=1.8, label="corrected"),
-        Line2D([], [], color=c_ref, ls=(0, (4, 2)), lw=1.1, label="calibrated (dof mix)"),
+        Line2D([], [], color=c_corr, lw=1.2, label="corrected"),
+        Line2D([], [], color=c_ref, ls=(0, (4, 2)), lw=0.8, label="calibrated"),
     ]
-    fig.legend(handles=handles, loc="upper center", ncol=len(handles), frameon=False, fontsize=8.5)
-    fig.tight_layout(rect=(0, 0, 1, 0.94))
-
-    if output_path is not None:
-        output_path = Path(output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(output_path)
-        plt.close(fig)
-    return fig
+    return _finish_metric_figure(
+        fig, xlabel=r"$\lg(\mathrm{reduced}\ \chi^2)$", handles=handles, output_path=output_path
+    )
 
 
 def _default_lg_chi2_bins() -> np.ndarray:
@@ -1995,60 +2033,25 @@ def plot_kl_distributions(
         pre, mean_pre = _lg_kl_density(counts, band, "full_uncorrected", lg_kl_bins=lg_kl_bins)
         post, mean_post = _lg_kl_density(counts, band, "full_corrected", lg_kl_bins=lg_kl_bins)
         calibrated_ref = _calibrated_kl_density(counts, band, lg_kl_bins=lg_kl_bins)
-        ymax = max(ymax, pre.max(), post.max())
+        ymax = max(ymax, pre.max(), post.max(), np.nanmax(calibrated_ref))
 
         ax.stairs(pre, lg_kl_bins, fill=True, color=c_uncorr, alpha=0.45)
-        ax.stairs(post, lg_kl_bins, color=c_corr, lw=1.8)
-        ax.plot(centers, calibrated_ref, color=c_ref, ls=(0, (4, 2)), lw=1.1)
-        ax.text(
-            0.97,
-            0.96,
-            f"${band}$",
-            transform=ax.transAxes,
-            va="top",
-            ha="right",
-            fontsize=13,
-            fontweight="bold",
-        )
-        ax.text(
-            0.97,
-            0.82,
-            rf"$\langle\mathrm{{KL}}\rangle$ {mean_pre:.3f}$\to${mean_post:.3f}",
-            transform=ax.transAxes,
-            va="top",
-            ha="right",
-            fontsize=8.0,
-        )
+        ax.stairs(post, lg_kl_bins, color=c_corr, lw=1.2)
+        ax.plot(centers, calibrated_ref, color=c_ref, ls=(0, (4, 2)), lw=0.8)
+        _metric_panel_labels(ax, band, rf"$\langle\mathrm{{KL}}\rangle$ {mean_pre:.3f}$\to${mean_post:.3f}")
         ax.set_xlim(*xlim)
 
-    ncols = 3
-    nrows = int(np.ceil(len(bands) / ncols))
-    fig, axes = plt.subplots(nrows, ncols, figsize=(3.2 * ncols, 2.8 * nrows), sharex=True, sharey=True)
-    axes = np.atleast_1d(axes).flatten()
+    fig, axes = _metric_band_axes(len(bands))
     for ax, band in zip(axes, bands, strict=False):
         panel(ax, band)
-    axes[0].set_ylim(0.0, 1.12 * ymax)  # shared y; give the tall peaks headroom
-    for ax in axes[len(bands) :]:
-        ax.set_visible(False)
-    for ax in axes[len(bands) - ncols : len(bands)]:
-        ax.set_xlabel(r"$\lg\,\mathrm{KL}$")
-    for ax in axes[::ncols]:
-        ax.set_ylabel("probability density")
+    axes[0].set_ylim(0.0, 1.6 * ymax)  # shared y; headroom for the panel labels
 
     handles = [
         Patch(facecolor=c_uncorr, alpha=0.45, label="uncorrected"),
-        Line2D([], [], color=c_corr, lw=1.8, label="corrected"),
-        Line2D([], [], color=c_ref, ls=(0, (4, 2)), lw=1.1, label="calibrated"),
+        Line2D([], [], color=c_corr, lw=1.2, label="corrected"),
+        Line2D([], [], color=c_ref, ls=(0, (4, 2)), lw=0.8, label="calibrated"),
     ]
-    fig.legend(handles=handles, loc="upper center", ncol=len(handles), frameon=False, fontsize=8.5)
-    fig.tight_layout(rect=(0, 0, 1, 0.94))
-
-    if output_path is not None:
-        output_path = Path(output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(output_path)
-        plt.close(fig)
-    return fig
+    return _finish_metric_figure(fig, xlabel=r"$\lg\,\mathrm{KL}$", handles=handles, output_path=output_path)
 
 
 def _default_lg_kl_bins() -> np.ndarray:
@@ -2128,3 +2131,183 @@ def make_kl_distribution_plot(
         xlim=xlim,
         output_path=output_path,
     )
+
+
+# ---------------------------------------------------------------------------
+# Whitened-signal distributions of several models
+# ---------------------------------------------------------------------------
+
+# Full AASTeX text width (513 pt), for figures spanning both columns
+_PAPER_TEXT_WIDTH_IN = 7.1
+# Merge this many of the fine whitened-signal bins of _default_result_bins
+_WHITEN_COMPARISON_REBIN = 10
+# Okabe-Ito colorblind-safe colors; the first one is for the reference (first) model
+_WHITEN_COMPARISON_COLORS = ("#0072B2", "#D55E00", "#E69F00", "#009E73", "#CC79A7", "#56B4E9")
+
+
+def plot_whiten_comparison(
+    hists_by_label: dict[str, pd.DataFrame],
+    *,
+    band: str,
+    object_mags: Sequence[float] = (),
+    xlim: tuple[float, float] = (-4.0, 4.0),
+    output_path: str | Path | None = None,
+):
+    """Whitened-signal distributions of several models in one band, overlaid.
+
+    One panel over all object magnitudes and one per requested object
+    magnitude bin; each panel overlays the step histograms of all models and
+    the standard normal distribution. The first model is drawn thicker, as the
+    reference one.
+
+    Parameters
+    ----------
+    hists_by_label : dict of str to pd.DataFrame
+        Histogram tables from :func:`_get_hists`, one per model, keyed by the
+        legend label; the order of the dict is the order of the colors.
+    band : str
+        Band to plot.
+    object_mags : sequence of float
+        Object magnitudes, one panel for the magnitude bin of each.
+    xlim : (float, float)
+        Horizontal limits, in whitened-signal units.
+    output_path : path or None
+        If given, save the figure there; otherwise return it.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    z_bins, mag_bins, _ = _default_result_bins()
+    z_width = z_bins[1] - z_bins[0]
+    z_centers = 0.5 * (z_bins[1:] + z_bins[:-1])
+    coarse_bins = z_bins[::_WHITEN_COMPARISON_REBIN]
+    coarse_width = z_width * _WHITEN_COMPARISON_REBIN
+
+    selections = [("all magnitudes", None)]
+    for obj_mag in object_mags:
+        mag_bin_idx = int(np.searchsorted(mag_bins, obj_mag))
+        lo, hi = mag_bins[mag_bin_idx], mag_bins[mag_bin_idx + 1]
+        selections.append((f"{lo:g}\N{EN DASH}{hi:g} mag", mag_bin_idx))
+
+    fig, axes = plt.subplots(
+        1,
+        len(selections),
+        figsize=(_PAPER_TEXT_WIDTH_IN, 2.6),
+        sharex=True,
+        sharey=True,
+        layout="constrained",
+    )
+    axes = np.atleast_1d(axes)
+    reference_grid = np.linspace(*xlim, 400)
+    for ax, (title, mag_bin_idx) in zip(axes, selections, strict=True):
+        for i, (color, (label, hists)) in enumerate(
+            zip(_WHITEN_COMPARISON_COLORS, hists_by_label.items(), strict=False)
+        ):
+            if mag_bin_idx is not None:
+                hists = hists.query(f"mag_bin_idx == {mag_bin_idx}")
+            agg, _mean, _std = _aggregate_hists(
+                hists, band, hist_column="z_hist", value_centers=z_centers, value_width=z_width
+            )
+            counts = agg["count"].to_numpy().reshape(-1, _WHITEN_COMPARISON_REBIN).sum(axis=1)
+            ax.stairs(
+                counts / counts.sum() / coarse_width,
+                coarse_bins,
+                color=color,
+                lw=1.6 if i == 0 else 1.0,
+                zorder=3 if i == 0 else 2,
+                label=label,
+            )
+        ax.plot(
+            reference_grid,
+            norm.pdf(reference_grid),
+            color="black",
+            ls=(0, (4, 2)),
+            lw=0.8,
+            label="standard normal",
+        )
+        ax.set_title(title, fontsize=_METRIC_FONTSIZE["label"])
+        ax.set_xlim(*xlim)
+        ax.tick_params(labelsize=_METRIC_FONTSIZE["tick"])
+
+    fig.supxlabel("whitened signal", fontsize=_METRIC_FONTSIZE["label"])
+    fig.supylabel("probability density", fontsize=_METRIC_FONTSIZE["label"])
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(
+        handles,
+        labels,
+        loc="outside upper center",
+        ncol=int(np.ceil(len(labels) / 2)),
+        frameon=False,
+        fontsize=_METRIC_FONTSIZE["legend"],
+        handlelength=1.5,
+        columnspacing=1.0,
+    )
+    if output_path is not None:
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(output_path)
+        plt.close(fig)
+    return fig
+
+
+def make_whiten_comparison_plot(
+    *,
+    models: dict[str, tuple[str | Path, Sequence[str]]],
+    survey_config: SurveyConfig,
+    split: str | None,
+    band: str,
+    object_mags: Sequence[float] = (),
+    compute_config: ComputeConfig,
+    subsample_partitions: float | None = None,
+    output_path: str | Path | None = None,
+):
+    """Compute the whitened-signal histograms of several models and overlay them.
+
+    Parameters
+    ----------
+    models : dict of str to (path, sequence of str)
+        Model file and its input columns, keyed by the legend label.
+    survey_config : SurveyConfig
+        Survey configuration of the data, including the split boundaries and n_src.
+    split : ``'train'``, ``'val'``, ``'test'``, or ``None``
+        Data split to use, ``None`` for the full dataset.
+    band : str
+        Band to plot.
+    object_mags : sequence of float
+        Object magnitudes, one panel for the magnitude bin of each.
+    compute_config : ComputeConfig
+        ``n_workers`` and ``device`` are used.
+    subsample_partitions : float or None
+        Random fraction of partitions to use, the same for all models.
+    output_path : path or None
+        If given, save the figure there; otherwise return it.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    z_bins, mag_bins, add_mag_err_bins = _default_result_bins()
+    hists_by_label = {}
+    for label, (model_path, model_columns) in models.items():
+        hists_by_label[label] = _get_hists(
+            survey_config.catalog_root,
+            hash_range=survey_config.hash_range(split),
+            bands=[band],
+            obj=survey_config.obj,
+            img=survey_config.img,
+            phot=survey_config.phot,
+            mode=survey_config.mode,
+            min_n_src=survey_config.n_src,
+            non_extended_only=False,
+            n_workers=compute_config.n_workers,
+            model_path=model_path,
+            model_columns=model_columns,
+            device=compute_config.device,
+            mag_bins=mag_bins,
+            z_bins=z_bins,
+            add_mag_err_bins=add_mag_err_bins,
+            n_samples=1,
+            subsample_partitions=subsample_partitions,
+        )
+    return plot_whiten_comparison(hists_by_label, band=band, object_mags=object_mags, output_path=output_path)

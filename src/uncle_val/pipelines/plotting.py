@@ -2200,7 +2200,8 @@ def plot_whiten_comparison(
         n_cols,
         figsize=(_PAPER_TEXT_WIDTH_IN, 1.35 * n_rows + 0.9),
         sharex=True,
-        sharey=True,
+        # Rows differ in peak height, a common scale would leave most panels half empty
+        sharey="row",
         layout="constrained",
         squeeze=False,
     )
@@ -2222,7 +2223,8 @@ def plot_whiten_comparison(
             if col == n_cols - 1:
                 ax.yaxis.set_label_position("right")
                 ax.set_ylabel(row_label, fontsize=_METRIC_FONTSIZE["label"])
-    axes[0, 0].set_ylim(bottom=0.0)
+    for row_axes in axes:
+        row_axes[0].set_ylim(bottom=0.0)
 
     fig.supxlabel("whitened signal", fontsize=_METRIC_FONTSIZE["label"])
     fig.supylabel("probability density", fontsize=_METRIC_FONTSIZE["label"])
